@@ -319,10 +319,10 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
 
         case Bytecode::getfield: {
-            // printf("%p\n", load_operand(0));
             auto arg = (Object*)load_operand(0);
             pop_operand();
             push_operand(arg->get_field(((network_u16*)&bytecode[pc + 1])->get()));
+            // printf("%d\n", (int)(intptr_t)load_operand(0));
             pc += 3;
             break;
         }
@@ -497,9 +497,11 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
             SubstitutionField::Size field_size = SubstitutionField::b4;
 
 
+            puts("load field type");
             auto field_type =
                 clz->constants_->load_string(field->descriptor_index_.get());
 
+            puts("load field name");
             auto field_name =
                 clz->constants_->load_string(field->name_index_.get());
 
@@ -516,10 +518,12 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
 
             fields[i].size_ = field_size;
 
+            puts("try bind constant");
             for (int j = 0; j < constant_count - 1; ++j) {
                 int ind = j + 1;
 
                 auto c = clz->constants_->load(ind);
+
                 if (c->tag_ == ClassFile::ConstantType::t_field_ref) {
                     auto ref = ((ClassFile::ConstantRef*)c);
                     auto nt = (ClassFile::ConstantNameAndType*)
@@ -576,7 +580,7 @@ Class* parse_classfile(Slice classname, const char* name)
         str += sizeof(ClassFile::HeaderSection1);
 
 
-        clz->constants_ = new ConstantPoolArrayImpl();
+        clz->constants_ = new ConstantPoolCompactImpl();
         str = clz->constants_->parse(*h1);
 
 

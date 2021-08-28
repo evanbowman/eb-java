@@ -112,7 +112,7 @@ public:
         index -= 1;
 
         for (int i = 0; i < binding_count_; ++i) {
-            if (bindings_[i].index_ == index) {
+            if (bindings_[i].index_ == index and bindings_[i].field_) {
                 return (const ClassFile::ConstantHeader*)bindings_[i].field_;
             }
         }
@@ -158,6 +158,8 @@ public:
         }
 
         bindings_ = (FieldBinding*)malloc(sizeof(FieldBinding) * count);
+
+        memset(bindings_, 0, sizeof(FieldBinding) * count);
 
         if (bindings_ == nullptr) {
             puts("malloc failed!");
