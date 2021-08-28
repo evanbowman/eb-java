@@ -13,10 +13,135 @@ namespace java {
 
 
 
-// SubstitutionField link_field(Class* current, )
-// {
-//     return {};
-// }
+// A quite complicated function call. It looks up a class, and determines the
+// byte offset of a field within that class.
+//
+// FIXME: this code does not look at access permissions on field access, we
+// could potentially have a shadowing bug, if there are private/public vars with
+// the same name.
+SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
+{
+    auto src_nt = (const ClassFile::ConstantNameAndType*)
+        current->constants_->load(ref.name_and_type_index_.get());
+
+    auto local_field_type =
+        current->constants_->load_string(src_nt->descriptor_index_.get());
+
+    auto local_field_name =
+        current->constants_->load_string(src_nt->name_index_.get());
+
+    // std::cout << "linking field of name "
+    //           << std::string(local_field_name.ptr_, local_field_name.length_)
+    //           << ", type "
+    //           << std::string(local_field_type.ptr_, local_field_type.length_)
+    //           << std::endl;
+
+
+    // Ok, so we're given a refrence to a field in an arbitrary class. To
+    // determine the byte offset of the field within an instance of said class,
+    // we begin by loading the class itself.
+    if (auto clz = jvm::load_class(current, ref.class_index_.get())) {
+
+        // To make things even more complicated, we need to run this thing in a
+        // loop, to match inherited fields.
+        while (clz) {
+
+            // The byte offset into the instance, where the field is stored.
+            u16 instance_offset = 0;
+
+            if (clz->super_) {
+                // Ask the parent class how many bytes it requires for its own
+                // fields.
+                // NOTE: The VM assumes that the parent class was loaded
+                // first. Otherwise none of this works!
+                instance_offset = clz->super_->instance_fields_size();
+            }
+
+            // Now comes the tricky part. Fields are laid out in an object according
+            // to the order in which they appear in the fields section of the
+            // classfile. So we need to jump to the correct portion of the class
+            // file, and build up an offset while iterating over all of the fields.
+
+            auto classfile = clz->classfile_data_;
+
+            // We cannot simply jump directly to the section of the classfile that
+            // lists all the field info, we need to iterate over some
+            // variable-length structures first.
+
+            auto h1 = (ClassFile::HeaderSection1*)classfile;
+            classfile += sizeof(ClassFile::HeaderSection1);
+
+            for (int i = 0; i < h1->constant_count_.get() - 1; ++i) {
+                classfile +=
+                    ClassFile::constant_size((const ClassFile::ConstantHeader*)
+                                             classfile);
+            }
+
+            // Ok, now we've skipped over the first part of the classfile (the
+            // constant pool). Next we need to jump across another section, along
+            // with the interfaces...
+
+            auto h2 = (ClassFile::HeaderSection2*)classfile;
+            if (h2->interfaces_count_.get()) {
+                puts("TODO: implement interfaces");
+                while (true) ;
+            }
+
+            classfile += sizeof(ClassFile::HeaderSection2);
+
+            auto h3 = (ClassFile::HeaderSection3*)classfile;
+            classfile += sizeof(ClassFile::HeaderSection3);
+
+            for (int i = 0; i < h3->fields_count_.get(); ++i) {
+                auto field = (const ClassFile::FieldInfo*)classfile;
+                classfile += sizeof(ClassFile::FieldInfo);
+
+                auto field_type =
+                    clz->constants_->load_string(field->descriptor_index_.get());
+
+                auto field_name =
+                    clz->constants_->load_string(field->name_index_.get());
+
+                SubstitutionField::Size field_size = SubstitutionField::b4;
+
+                // Add to byte offset based on size of the typeinfo in the type
+                // descriptor.
+                if (field_type == Slice::from_c_str("I")) {
+                    field_size = SubstitutionField::b4;
+                } else if (field_type == Slice::from_c_str("F")) {
+                    field_size = SubstitutionField::b4;
+                } else if (field_type == Slice::from_c_str("S")) {
+                    field_size = SubstitutionField::b2;
+                } else if (field_type == Slice::from_c_str("C")) {
+                    field_size = SubstitutionField::b1;
+                } else {
+                    std::cout << std::string(field_type.ptr_, field_type.length_) << std::endl;
+                    puts("TODO: field sizes...");
+                    while (true) ;
+                }
+
+                if (field_type == local_field_type and
+                    field_name == local_field_name) {
+                    // std::cout << "found field at offset " << instance_offset << std::endl;
+                    return {field_size, instance_offset};
+                }
+
+                instance_offset += (1 << field_size);
+
+                // Skip over attributes...
+                for (int i = 0; i < field->attributes_count_.get(); ++i) {
+                    auto attr = (ClassFile::AttributeInfo*)classfile;
+                    classfile +=
+                        sizeof(ClassFile::AttributeInfo) +
+                        attr->attribute_length_.get();
+                }
+            }
+            clz = clz->super_;
+        }
+    }
+
+    return {};
+}
 
 
 
@@ -24,88 +149,72 @@ const char* parse_classfile_fields(const char* str,
                                    Class* clz,
                                    const ClassFile::HeaderSection1& h1)
 {
-    // Here, we're loading the class file, and we want to determine all of the
-    // correct byte offsets of all of the class instance's fields.
+    int nfields = 0;
+    {
+        const char* str =
+            ((const char*)&h1) + sizeof(ClassFile::HeaderSection1);
 
-    auto h3 = reinterpret_cast<const ClassFile::HeaderSection3*>(str);
-    str += sizeof(ClassFile::HeaderSection3);
-
-    if (auto nfields = h3->fields_count_.get()) {
-
-        auto fields = (SubstitutionField*)jvm::malloc(sizeof(SubstitutionField) * nfields);
-
-        u16 offset = clz->super_->instance_fields_size();
-
-        clz->constants_->reserve_fields(nfields);
-
-        for (int i = 0; i < nfields; ++i) {
-            auto field = (const ClassFile::FieldInfo*)str;
-            str += sizeof(ClassFile::FieldInfo);
-
-            printf("field %d has offset %d\n", i, offset);
-
-            fields[i].offset_ = offset;
-
-            // printf("field desc %d\n", );
-
-            SubstitutionField::Size field_size = SubstitutionField::b4;
-
-
-            auto field_type =
-                clz->constants_->load_string(field->descriptor_index_.get());
-
-            auto field_name =
-                clz->constants_->load_string(field->name_index_.get());
-
-
-            if (field_type == Slice::from_c_str("I")) {
-                field_size = SubstitutionField::b4;
-            } else if (field_type == Slice::from_c_str("F")) {
-                field_size = SubstitutionField::b4;
-            } else if (field_type == Slice::from_c_str("S")) {
-                field_size = SubstitutionField::b2;
-            } else if (field_type == Slice::from_c_str("C")) {
-                field_size = SubstitutionField::b1;
-            } else {
-                std::cout << std::string(field_type.ptr_, field_type.length_) << std::endl;
-                puts("TODO: field sizes...");
-                while (true) ;
+        for (int i = 0; i < h1.constant_count_.get() - 1; ++i) {
+            auto hdr = (const ClassFile::ConstantHeader*)str;
+            if (hdr->tag_ == ClassFile::t_field_ref) {
+                ++nfields;
             }
+            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+        }
+    }
 
-            fields[i].size_ = field_size;
+    auto fields = (SubstitutionField*)jvm::malloc(sizeof(SubstitutionField) * nfields);
+    clz->constants_->reserve_fields(nfields);
 
-            for (int j = 0; j < h1.constant_count_.get() - 1; ++j) {
-                int ind = j + 1;
+    {
+        // Substitute each field ref in this module with a specific byte offset
+        // into the class instance.
 
-                auto c = clz->constants_->load(ind);
+        const char* str =
+            ((const char*)&h1) + sizeof(ClassFile::HeaderSection1);
 
-                if (c->tag_ == ClassFile::ConstantType::t_field_ref) {
-                    auto ref = ((ClassFile::ConstantRef*)c);
-                    auto nt = (ClassFile::ConstantNameAndType*)
-                        clz->constants_->load(ref->name_and_type_index_.get());
+        for (int i = 0; i < h1.constant_count_.get() - 1; ++i) {
+            auto hdr = (const ClassFile::ConstantHeader*)str;
+            if (hdr->tag_ == ClassFile::t_field_ref) {
+                auto& ref = *(const ClassFile::ConstantRef*)hdr;
+                fields[i] = link_field(clz, ref);
+                clz->constants_->bind_field(i + 1, &fields[i]);
 
-                    // FIXME: we also need to verify that the class type matches...
-                    if (clz->constants_->load_string(nt->name_index_.get()) == field_name and
-                        clz->constants_->load_string(nt->descriptor_index_.get()) == field_type) {
-                        printf("found field at %d\n", ind);
-
-                        clz->constants_->bind_field(ind, &fields[i]);
-                        clz->cpool_highest_field_ = ind;
+                if (auto other_clz = jvm::load_class(clz, ref.class_index_.get())) {
+                    // If we're registering a field for the same class as we're
+                    // parsing...
+                    if (other_clz == clz) {
+                        if (clz->cpool_highest_field_ not_eq -1) {
+                            auto prev = (SubstitutionField*)
+                                clz->constants_->load(clz->cpool_highest_field_);
+                            if (fields[i].offset_ > prev->offset_) {
+                                clz->cpool_highest_field_ = i + 1;
+                            }
+                        } else {
+                            clz->cpool_highest_field_ = i + 1;
+                        }
                     }
-
                 }
             }
 
+            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+        }
+    }
 
-            offset += (1 << field_size);
 
+    // Skip over the rest of the file...
+    auto h3 = reinterpret_cast<const ClassFile::HeaderSection3*>(str);
+    str += sizeof(ClassFile::HeaderSection3);
 
-            for (int i = 0; i < field->attributes_count_.get(); ++i) {
-                auto attr = (ClassFile::AttributeInfo*)str;
-                str +=
-                    sizeof(ClassFile::AttributeInfo) +
-                    attr->attribute_length_.get();
-            }
+    for (int i = 0; i < h3->fields_count_.get(); ++i) {
+        auto field = (const ClassFile::FieldInfo*)str;
+        str += sizeof(ClassFile::FieldInfo);
+
+        for (int i = 0; i < field->attributes_count_.get(); ++i) {
+            auto attr = (ClassFile::AttributeInfo*)str;
+            str +=
+                sizeof(ClassFile::AttributeInfo) +
+                attr->attribute_length_.get();
         }
     }
 
@@ -132,6 +241,8 @@ Class* parse_classfile(Slice classname, const char* name)
 
         new (clz)Class();
 
+        clz->classfile_data_ = str;
+
         str += sizeof(ClassFile::HeaderSection1);
 
 
@@ -150,6 +261,8 @@ Class* parse_classfile(Slice classname, const char* name)
             puts("TODO: load interfaces from classfile!");
             while (true) ;
         }
+
+        jvm::register_class(classname, clz);
 
         str = parse_classfile_fields(str, clz, *h1);
 
@@ -206,8 +319,6 @@ Class* parse_classfile(Slice classname, const char* name)
                 }
             }
         }
-
-        jvm::register_class(classname, clz);
 
         return clz;
     }
