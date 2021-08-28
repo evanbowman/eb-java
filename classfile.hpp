@@ -1,6 +1,7 @@
 #pragma once
 
 #include "endian.hpp"
+#include <stdio.h>
 
 
 
@@ -162,6 +163,60 @@ struct ClassFile {
         network_u16 bootstrap_method_attr_index_;
         network_u16 name_and_type_index_;
     };
+
+
+    static inline size_t constant_size(const ConstantHeader* hdr)
+    {
+        switch (hdr->tag_) {
+        default:
+            printf("error, constant %d\n", hdr->tag_);
+            while (true) ;
+            break;
+
+        case ClassFile::ConstantType::t_class:
+            return sizeof(ClassFile::ConstantClass);
+
+        case ClassFile::ConstantType::t_field_ref:
+            return sizeof(ClassFile::ConstantRef);
+
+        case ClassFile::ConstantType::t_method_ref:
+            return sizeof(ClassFile::ConstantRef);
+
+        case ClassFile::ConstantType::t_interface_method_ref:
+            return sizeof(ClassFile::ConstantRef);
+
+        case ClassFile::ConstantType::t_string:
+            return sizeof(ClassFile::ConstantString);
+
+        case ClassFile::ConstantType::t_integer:
+            return sizeof(ClassFile::ConstantInteger);
+
+        case ClassFile::ConstantType::t_float:
+            return sizeof(ClassFile::ConstantFloat);
+
+        case ClassFile::ConstantType::t_long:
+            return sizeof(ClassFile::ConstantLong);
+
+        case ClassFile::ConstantType::t_double:
+            return sizeof(ClassFile::ConstantDouble);
+
+        case ClassFile::ConstantType::t_name_and_type:
+            return sizeof(ClassFile::ConstantNameAndType);
+
+        case ClassFile::ConstantType::t_utf8:
+            return sizeof(ClassFile::ConstantUtf8)
+                + ((const ClassFile::ConstantUtf8*)hdr)->length_.get();
+
+        case ClassFile::ConstantType::t_method_handle:
+            return sizeof(ClassFile::ConstantMethodHandle);
+
+        case ClassFile::ConstantType::t_method_type:
+            return sizeof(ClassFile::ConstantMethodType);
+
+        case ClassFile::ConstantType::t_invoke_dynamic:
+            return sizeof(ClassFile::ConstantInvokeDynamic);
+        }
+    }
 };
 
 

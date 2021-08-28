@@ -8,29 +8,6 @@ namespace java {
 
 
 
-const ClassFile::ConstantHeader* Class::load_constant(u16 index)
-{
-    return constants_[index - 1];
-}
-
-
-
-Slice Class::load_string_constant(u16 index)
-{
-    auto constant = load_constant(index);
-
-    if (constant->tag_ == ClassFile::ConstantType::t_utf8) {
-        return Slice {
-            (const char*)constant + sizeof(ClassFile::ConstantUtf8),
-            ((ClassFile::ConstantUtf8*)constant)->length_.get()
-        };
-    } else {
-        while (true) ;
-    }
-}
-
-
-
 const ClassFile::MethodInfo* Class::load_method(const char* name)
 {
     auto name_slc = Slice::from_c_str(name);
@@ -39,7 +16,7 @@ const ClassFile::MethodInfo* Class::load_method(const char* name)
         for (int i = 0; i < method_count_; ++i) {
 
             const auto method_name_str =
-                load_string_constant(methods_[i]->name_index_.get());
+                constants_->load_string(methods_[i]->name_index_.get());
 
             if (method_name_str == name_slc) {
                 return methods_[i];
@@ -53,13 +30,13 @@ const ClassFile::MethodInfo* Class::load_method(const char* name)
 
 void* Class::get_field(Object* obj, u16 index)
 {
-    auto c = load_constant(index);
+    auto c = constants_->load(index);
 
     auto sub = (SubstitutionField*)c;
 
     u8* obj_ram = ((u8*)obj) + sizeof(Object);
 
-    printf("(get field) index %d from %p\n", index, obj_ram);
+    // printf("(get field) index %d from %p\n", index, obj_ram);
 
 
     switch (1 << sub->size_) {
@@ -73,7 +50,6 @@ void* Class::get_field(Object* obj, u16 index)
     }
 
     case 4: {
-        puts("r4");
         u32 val;
         memcpy(&val, obj_ram + sub->offset_, 4);
         return (void*)(intptr_t)val;
@@ -93,11 +69,11 @@ void* Class::get_field(Object* obj, u16 index)
 
 void Class::put_field(Object* obj, u16 index, void* value)
 {
-    auto c = load_constant(index);
+    auto c = constants_->load(index);
 
     auto sub = (SubstitutionField*)c;
 
-    printf("index %d\n", index);
+    // printf("index %d\n", index);
 
     u8* obj_ram = ((u8*)obj) + sizeof(Object);
 
@@ -111,7 +87,6 @@ void Class::put_field(Object* obj, u16 index, void* value)
         break;
 
     case 4:
-        puts("w4");
         memcpy(obj_ram + sub->offset_, &value, 4);
         break;
 
@@ -121,10 +96,10 @@ void Class::put_field(Object* obj, u16 index, void* value)
         break;
     }
 
-    printf("put field %d %d %d %p \n", sub->offset_,
-           1 << sub->size_,
-           (int)(intptr_t)value,
-           obj_ram);
+    // printf("put field %d %d %d %p \n", sub->offset_,
+    //        1 << sub->size_,
+    //        (int)(intptr_t)value,
+    //        obj_ram);
 }
 
 

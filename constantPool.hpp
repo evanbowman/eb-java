@@ -1,0 +1,196 @@
+#pragma once
+
+#include "classfile.hpp"
+#include "slice.hpp"
+#include <stdio.h>
+
+
+// NOTE: Creating a constant pool in memory for every class takes up a lot of
+// space. We have a number of implementations of a constant pool, some are
+// backed by an allocation, and some run directly from the class file (much
+// slower).
+
+
+
+namespace java {
+
+
+
+class ConstantPool {
+public:
+    virtual ~ConstantPool()
+    {
+    }
+
+
+    virtual const char* parse(const ClassFile::HeaderSection1& src) = 0;
+
+
+    virtual const ClassFile::ConstantHeader* load(u16 index) = 0;
+
+
+    virtual void reserve_fields(int count) = 0;
+
+
+    virtual void bind_field(u16 index, void* data) = 0;
+
+
+    Slice load_string(u16 index)
+    {
+        auto constant = load(index);
+
+        if (constant->tag_ == ClassFile::ConstantType::t_utf8) {
+            return Slice {
+                (const char*)constant + sizeof(ClassFile::ConstantUtf8),
+                ((ClassFile::ConstantUtf8*)constant)->length_.get()
+            };
+        } else {
+            while (true) ;
+        }
+    }
+};
+
+
+
+// The fastest constant pool implementation. All lookups are O(1), as the class
+// stores an array of pointers into the classfile.
+class ConstantPoolArrayImpl : public ConstantPool {
+public:
+
+
+    const char* parse(const ClassFile::HeaderSection1& src) override
+    {
+        array_ = (const ClassFile::ConstantHeader**)
+            malloc(sizeof(ClassFile::ConstantHeader*) *
+                   src.constant_count_.get() - 1);
+
+        const char* str =
+            ((const char*)&src) + sizeof(ClassFile::HeaderSection1);
+
+
+        for (int i = 0; i < src.constant_count_.get() - 1; ++i) {
+            array_[i] = (const ClassFile::ConstantHeader*)str;
+            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+        }
+
+        return str;
+    }
+
+
+    const ClassFile::ConstantHeader* load(u16 index) override
+    {
+        return array_[index - 1];
+    }
+
+
+    void reserve_fields(int) override
+    {
+
+    }
+
+
+    void bind_field(u16 index, void* field)
+    {
+        array_[index - 1] = (const ClassFile::ConstantHeader*)field;
+    }
+
+
+private:
+    const ClassFile::ConstantHeader** array_ = nullptr;
+};
+
+
+
+// This class uses minimal extra memory.
+class ConstantPoolCompactImpl : public ConstantPool {
+public:
+
+
+    // Requires O(n), where n is the number of constants in the constant pool.
+    const ClassFile::ConstantHeader* load(u16 index) override
+    {
+        index -= 1;
+
+        for (int i = 0; i < binding_count_; ++i) {
+            if (bindings_[i].index_ == index) {
+                return (const ClassFile::ConstantHeader*)bindings_[i].field_;
+            }
+        }
+
+        auto str = (const char*)info_ + sizeof(ClassFile::HeaderSection1);
+
+        int i = 0;
+        while (i not_eq index) {
+            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+            ++i;
+        }
+
+        return (ClassFile::ConstantHeader*)str;
+    }
+
+
+    const char* parse(const ClassFile::HeaderSection1& src) override
+    {
+        info_ = &src;
+
+        const char* str =
+            ((const char*)&src) + sizeof(ClassFile::HeaderSection1);
+
+        for (int i = 0; i < src.constant_count_.get() - 1; ++i) {
+            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+        }
+
+        return str;
+    }
+
+
+    struct FieldBinding {
+        u16 index_;
+        void* field_;
+    };
+
+
+    void reserve_fields(int count) override
+    {
+        if (bindings_) {
+            puts("error: reserve_fields!");
+            while (true) ;
+        }
+
+        bindings_ = (FieldBinding*)malloc(sizeof(FieldBinding) * count);
+
+        if (bindings_ == nullptr) {
+            puts("malloc failed!");
+            while (true) ;
+        }
+
+        binding_count_ = count;
+    }
+
+
+    void bind_field(u16 index, void* field) override
+    {
+        if (field == nullptr) {
+            // Hmm... should never really happen...
+            return;
+        }
+
+        for (int i = 0; ; ++i) {
+            if (bindings_[i].field_ == nullptr) {
+                bindings_[i].index_ = index - 1;
+                bindings_[i].field_ = field;
+                return;
+            }
+        }
+    }
+
+
+private:
+    FieldBinding* bindings_ = nullptr;
+    const ClassFile::HeaderSection1* info_;
+    u16 binding_count_ = 0;
+};
+
+
+
+}

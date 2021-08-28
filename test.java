@@ -29,6 +29,7 @@ class HelloWorldApp {
         while (true) {
             test(i++);
             app.foo++;
+            app.bar++;
             app.fn();
         }
     }

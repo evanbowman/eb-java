@@ -135,7 +135,7 @@ void invoke_method(Class* clz,
             (ClassFile::AttributeInfo*)
             ((const char*)method + sizeof(ClassFile::MethodInfo));
 
-        if (clz->load_string_constant(attr->attribute_name_index_.get()) ==
+        if (clz->constants_->load_string(attr->attribute_name_index_.get()) ==
             Slice::from_c_str("Code")) {
 
             auto bytecode =
@@ -162,9 +162,9 @@ void invoke_method(Class* clz,
 Class* load_class(Class* current_module, u16 class_index)
 {
     auto c_clz = (const ClassFile::ConstantClass*)
-        current_module->load_constant(class_index);
+        current_module->constants_->load(class_index);
 
-    auto cname = current_module->load_string_constant(c_clz->name_index_.get());
+    auto cname = current_module->constants_->load_string(c_clz->name_index_.get());
 
     for (auto& entry : class_table) {
         if (entry.name_ == cname) {
@@ -190,8 +190,8 @@ const ClassFile::MethodInfo* lookup_method(Class* clz,
             u16 name_index = clz->methods_[i]->name_index_.get();
             u16 type_index = clz->methods_[i]->descriptor_index_.get();
 
-            auto rhs_name = clz->load_string_constant(name_index);
-            auto rhs_type = clz->load_string_constant(type_index);
+            auto rhs_name = clz->constants_->load_string(name_index);
+            auto rhs_type = clz->constants_->load_string(type_index);
 
             if (lhs_type == rhs_type and lhs_name == rhs_name) {
                 return clz->methods_[i];
@@ -206,7 +206,7 @@ const ClassFile::MethodInfo* lookup_method(Class* clz,
 
 void dispatch_method(Class* clz, Object* self, u16 method_index)
 {
-    auto ref = (const ClassFile::ConstantRef*)clz->load_constant(method_index);
+    auto ref = (const ClassFile::ConstantRef*)clz->constants_->load(method_index);
 
     Class* t_clz = load_class(clz, ref->class_index_.get());
     if (t_clz == nullptr) {
@@ -216,10 +216,10 @@ void dispatch_method(Class* clz, Object* self, u16 method_index)
     }
 
     auto nt = (const ClassFile::ConstantNameAndType*)
-        clz->load_constant(ref->name_and_type_index_.get());
+        clz->constants_->load(ref->name_and_type_index_.get());
 
-    auto lhs_name = clz->load_string_constant(nt->name_index_.get());
-    auto lhs_type = clz->load_string_constant(nt->descriptor_index_.get());
+    auto lhs_name = clz->constants_->load_string(nt->name_index_.get());
+    auto lhs_type = clz->constants_->load_string(nt->descriptor_index_.get());
 
     if (auto mtd = lookup_method(t_clz, lhs_name, lhs_type)) {
         invoke_method(t_clz, self, mtd);
@@ -244,17 +244,27 @@ void invoke_special(Class* clz, u16 method_index)
 
 
 
+void* jvm_malloc(size_t size)
+{
+    static size_t total = 0;
+    total += size;
+    printf("vm malloc %zu (total %zu)\n", size, total);
+    return malloc(size);
+}
+
+
+
 Object* make_instance(Class* clz, u16 class_constant)
 {
     auto t_clz = load_class(clz, class_constant);
 
     if (t_clz) {
-        auto sub = ((SubstitutionField*)clz->constants_[clz->cpool_highest_field_]);
+        auto sub = (SubstitutionField*)clz->constants_->load(clz->cpool_highest_field_);
 
         printf("highest field offset: %d\n", sub->offset_);
         printf("instance size %ld\n", sizeof(Object) + sub->offset_ + (1 << sub->size_));
 
-        auto mem = (Object*)malloc(sizeof(Object) + sub->offset_ + (1 << sub->size_));
+        auto mem = (Object*)jvm_malloc(sizeof(Object) + sub->offset_ + (1 << sub->size_));
         new (mem) Object();
         mem->class_ = t_clz;
         return mem;
@@ -312,9 +322,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             // printf("%p\n", load_operand(0));
             auto arg = (Object*)load_operand(0);
             pop_operand();
-
             push_operand(arg->get_field(((network_u16*)&bytecode[pc + 1])->get()));
-            printf("read back %d\n", (int)(intptr_t)(load_operand(0)));
             pc += 3;
             break;
         }
@@ -332,12 +340,6 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             const int result =
                 (int)(intptr_t)load_operand(0) +
                 (int)(intptr_t)load_operand(1);
-
-            printf("iadd result %d %d %d\n",
-                   result,
-                   (int)(intptr_t)load_operand(0),
-                   (int)(intptr_t)load_operand(1));
-
             pop_operand();
             pop_operand();
             push_operand((void*)(intptr_t)result);
@@ -476,9 +478,11 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
 
     if (auto nfields = h3->fields_count_.get()) {
 
-        auto fields = (SubstitutionField*)malloc(sizeof(SubstitutionField) * nfields);
+        auto fields = (SubstitutionField*)jvm_malloc(sizeof(SubstitutionField) * nfields);
 
         u16 offset = 0;
+
+        clz->constants_->reserve_fields(nfields);
 
         for (int i = 0; i < nfields; ++i) {
             auto field = (const ClassFile::FieldInfo*)str;
@@ -494,10 +498,10 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
 
 
             auto field_type =
-                clz->load_string_constant(field->descriptor_index_.get());
+                clz->constants_->load_string(field->descriptor_index_.get());
 
             auto field_name =
-                clz->load_string_constant(field->name_index_.get());
+                clz->constants_->load_string(field->name_index_.get());
 
 
             if (field_type == Slice::from_c_str("I")) {
@@ -513,20 +517,21 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
             fields[i].size_ = field_size;
 
             for (int j = 0; j < constant_count - 1; ++j) {
-                auto c = clz->constants_[j];
+                int ind = j + 1;
+
+                auto c = clz->constants_->load(ind);
                 if (c->tag_ == ClassFile::ConstantType::t_field_ref) {
                     auto ref = ((ClassFile::ConstantRef*)c);
                     auto nt = (ClassFile::ConstantNameAndType*)
-                        clz->load_constant(ref->name_and_type_index_.get());
+                        clz->constants_->load(ref->name_and_type_index_.get());
 
                     // FIXME: we also need to verify that the class type matches...
-                    if (clz->load_string_constant(nt->name_index_.get()) == field_name and
-                        clz->load_string_constant(nt->descriptor_index_.get()) == field_type) {
-                        printf("found field at %d\n", j);
+                    if (clz->constants_->load_string(nt->name_index_.get()) == field_name and
+                        clz->constants_->load_string(nt->descriptor_index_.get()) == field_type) {
+                        printf("found field at %d\n", ind);
 
-                        clz->constants_[j] = (const ClassFile::ConstantHeader*)&fields[i];
-
-                        clz->cpool_highest_field_ = j;
+                        clz->constants_->bind_field(ind, &fields[i]);
+                        clz->cpool_highest_field_ = ind;
                     }
 
                 }
@@ -550,80 +555,6 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
 
 
 
-const char* parse_classfile_constants(const char* str, Class* clz, int constant_count)
-{
-    for (int i = 0; i < constant_count - 1; ++i) {
-        clz->constants_[i] = (const ClassFile::ConstantHeader*)str;
-        switch (static_cast<ClassFile::ConstantType>(*str)) {
-        default:
-            printf("error, constant %d\n", str[0]);
-            while (true) ;
-            break;
-
-        case ClassFile::ConstantType::t_class:
-            str += sizeof(ClassFile::ConstantClass);
-            break;
-
-        case ClassFile::ConstantType::t_field_ref:
-            str += sizeof(ClassFile::ConstantRef);
-            break;
-
-        case ClassFile::ConstantType::t_method_ref:
-            str += sizeof(ClassFile::ConstantRef);
-            break;
-
-        case ClassFile::ConstantType::t_interface_method_ref:
-            str += sizeof(ClassFile::ConstantRef);
-            break;
-
-        case ClassFile::ConstantType::t_string:
-            str += sizeof(ClassFile::ConstantString);
-            break;
-
-        case ClassFile::ConstantType::t_integer:
-            str += sizeof(ClassFile::ConstantInteger);
-            break;
-
-        case ClassFile::ConstantType::t_float:
-            str += sizeof(ClassFile::ConstantFloat);
-            break;
-
-        case ClassFile::ConstantType::t_long:
-            str += sizeof(ClassFile::ConstantLong);
-            break;
-
-        case ClassFile::ConstantType::t_double:
-            str += sizeof(ClassFile::ConstantDouble);
-            break;
-
-        case ClassFile::ConstantType::t_name_and_type:
-            str += sizeof(ClassFile::ConstantNameAndType);
-            break;
-
-        case ClassFile::ConstantType::t_utf8:
-            str += sizeof(ClassFile::ConstantUtf8)
-                + ((const ClassFile::ConstantUtf8*)str)->length_.get();
-            break;
-
-        case ClassFile::ConstantType::t_method_handle:
-            str += sizeof(ClassFile::ConstantMethodHandle);
-            break;
-
-        case ClassFile::ConstantType::t_method_type:
-            str += sizeof(ClassFile::ConstantMethodType);
-            break;
-
-        case ClassFile::ConstantType::t_invoke_dynamic:
-            str += sizeof(ClassFile::ConstantInvokeDynamic);
-            break;
-        }
-    }
-
-    return str;
-}
-
-
-
 Class* parse_classfile(Slice classname, const char* name)
 {
     if (auto str = get_file_contents(name)) {
@@ -633,7 +564,7 @@ Class* parse_classfile(Slice classname, const char* name)
             return nullptr;
         }
 
-        auto clz = (Class*)malloc(sizeof(Class));
+        auto clz = (Class*)jvm_malloc(sizeof(Class));
 
         if (not clz) {
             puts("failed to alloc constant class memory");
@@ -644,16 +575,10 @@ Class* parse_classfile(Slice classname, const char* name)
 
         str += sizeof(ClassFile::HeaderSection1);
 
-        clz->constants_ = (const ClassFile::ConstantHeader**)
-            malloc(sizeof(ClassFile::ConstantHeader*)
-                   * h1->constant_count_.get());
 
-        if (not clz->constants_) {
-            puts("failed to alloc constant pool");
-            while (true) ; // TODO: raise error
-        }
+        clz->constants_ = new ConstantPoolArrayImpl();
+        str = clz->constants_->parse(*h1);
 
-        str = parse_classfile_constants(str, clz, h1->constant_count_.get());
 
         auto h2 = reinterpret_cast<const ClassFile::HeaderSection2*>(str);
         str += sizeof(ClassFile::HeaderSection2);
@@ -676,7 +601,7 @@ Class* parse_classfile(Slice classname, const char* name)
 
             clz->methods_ =
                 (const ClassFile::MethodInfo**)
-                malloc(sizeof(ClassFile::MethodInfo*)
+                jvm_malloc(sizeof(ClassFile::MethodInfo*)
                        * h4->methods_count_.get());
 
             if (clz->methods_ == nullptr) {
@@ -713,7 +638,7 @@ Class* parse_classfile(Slice classname, const char* name)
                     attr->attribute_length_.get();
 
                 auto attr_name =
-                    clz->load_string_constant(attr->attribute_name_index_.get());
+                    clz->constants_->load_string(attr->attribute_name_index_.get());
 
                 if (attr_name == Slice::from_c_str("SourceFile")) {
                     // TODO...
