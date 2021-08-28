@@ -1,6 +1,7 @@
 #include "classfile.hpp"
 #include "class.hpp"
 #include "endian.hpp"
+#include "object.hpp"
 #include <iostream>
 #include <map>
 #include <string.h>
@@ -13,17 +14,6 @@ const char* get_file_contents(const char* file);
 
 
 namespace java {
-
-
-
-
-struct Object {
-    Class* class_;
-    // instance_vars_[...]
-};
-
-
-
 namespace jvm {
 
 
@@ -108,6 +98,9 @@ struct Bytecode {
         iload_1       = 0x1b,
         iload_2       = 0x1c,
         iload_3       = 0x1d,
+        iadd          = 0x60,
+        getfield      = 0xb4,
+        putfield      = 0xb5,
         iinc          = 0x84,
         __goto        = 167,
         invokestatic  = 184,
@@ -241,6 +234,8 @@ void dispatch_method(Class* clz, Object* self, u16 method_index)
 
 void invoke_special(Class* clz, u16 method_index)
 {
+    puts("invoke_special");
+
     auto self = (Object*)load_operand(0);
     pop_operand();
 
@@ -254,7 +249,12 @@ Object* make_instance(Class* clz, u16 class_constant)
     auto t_clz = load_class(clz, class_constant);
 
     if (t_clz) {
-        auto mem = (Object*)malloc(100);
+        auto sub = ((SubstitutionField*)clz->constants_[clz->cpool_highest_field_]);
+
+        printf("highest field offset: %d\n", sub->offset_);
+        printf("instance size %ld\n", sizeof(Object) + sub->offset_ + (1 << sub->size_));
+
+        auto mem = (Object*)malloc(sizeof(Object) + sub->offset_ + (1 << sub->size_));
         new (mem) Object();
         mem->class_ = t_clz;
         return mem;
@@ -284,6 +284,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
         case Bytecode::new_inst:
             push_operand(make_instance(clz, ((network_u16*)&bytecode[pc + 1])->get()));
+            // printf("new %p\n", load_operand(0));
             pc += 3;
             break;
 
@@ -292,6 +293,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             return;
 
         case Bytecode::dup:
+            // printf("dup %p\n", load_operand(0));
             push_operand(load_operand(0));
             ++pc;
             break;
@@ -305,6 +307,43 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             push_operand((void*)(int)1);
             ++pc;
             break;
+
+        case Bytecode::getfield: {
+            // printf("%p\n", load_operand(0));
+            auto arg = (Object*)load_operand(0);
+            pop_operand();
+
+            push_operand(arg->get_field(((network_u16*)&bytecode[pc + 1])->get()));
+            printf("read back %d\n", (int)(intptr_t)(load_operand(0)));
+            pc += 3;
+            break;
+        }
+
+        case Bytecode::putfield:
+            ((Object*)load_operand(1))->put_field(((network_u16*)&bytecode[pc + 1])->get(),
+                                                  load_operand(0));
+            pop_operand();
+            pop_operand();
+            pc += 3;
+            // while (true) ;
+            break;
+
+        case Bytecode::iadd: {
+            const int result =
+                (int)(intptr_t)load_operand(0) +
+                (int)(intptr_t)load_operand(1);
+
+            printf("iadd result %d %d %d\n",
+                   result,
+                   (int)(intptr_t)load_operand(0),
+                   (int)(intptr_t)load_operand(1));
+
+            pop_operand();
+            pop_operand();
+            push_operand((void*)(intptr_t)result);
+            pc += 1;
+            break;
+        }
 
         case Bytecode::astore:
         case Bytecode::istore:
@@ -427,6 +466,164 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
 
 
+const char* parse_classfile_fields(const char* str, Class* clz, int constant_count)
+{
+    // Here, we're loading the class file, and we want to determine all of the
+    // correct byte offsets of all of the class instance's fields.
+
+    auto h3 = reinterpret_cast<const ClassFile::HeaderSection3*>(str);
+    str += sizeof(ClassFile::HeaderSection3);
+
+    if (auto nfields = h3->fields_count_.get()) {
+
+        auto fields = (SubstitutionField*)malloc(sizeof(SubstitutionField) * nfields);
+
+        u16 offset = 0;
+
+        for (int i = 0; i < nfields; ++i) {
+            auto field = (const ClassFile::FieldInfo*)str;
+            str += sizeof(ClassFile::FieldInfo);
+
+            printf("field %d has offset %d\n", i, offset);
+
+            fields[i].offset_ = offset;
+
+            // printf("field desc %d\n", );
+
+            SubstitutionField::Size field_size = SubstitutionField::b4;
+
+
+            auto field_type =
+                clz->load_string_constant(field->descriptor_index_.get());
+
+            auto field_name =
+                clz->load_string_constant(field->name_index_.get());
+
+
+            if (field_type == Slice::from_c_str("I")) {
+                field_size = SubstitutionField::b4;
+            } else if (field_type == Slice::from_c_str("S")) {
+                field_size = SubstitutionField::b2;
+            } else {
+                std::cout << std::string(field_type.ptr_, field_type.length_) << std::endl;
+                puts("TODO: field sizes...");
+                while (true) ;
+            }
+
+            fields[i].size_ = field_size;
+
+            for (int j = 0; j < constant_count - 1; ++j) {
+                auto c = clz->constants_[j];
+                if (c->tag_ == ClassFile::ConstantType::t_field_ref) {
+                    auto ref = ((ClassFile::ConstantRef*)c);
+                    auto nt = (ClassFile::ConstantNameAndType*)
+                        clz->load_constant(ref->name_and_type_index_.get());
+
+                    // FIXME: we also need to verify that the class type matches...
+                    if (clz->load_string_constant(nt->name_index_.get()) == field_name and
+                        clz->load_string_constant(nt->descriptor_index_.get()) == field_type) {
+                        printf("found field at %d\n", j);
+
+                        clz->constants_[j] = (const ClassFile::ConstantHeader*)&fields[i];
+
+                        clz->cpool_highest_field_ = j;
+                    }
+
+                }
+            }
+
+
+            offset += (1 << field_size);
+
+
+            for (int i = 0; i < field->attributes_count_.get(); ++i) {
+                auto attr = (ClassFile::AttributeInfo*)str;
+                str +=
+                    sizeof(ClassFile::AttributeInfo) +
+                    attr->attribute_length_.get();
+            }
+        }
+    }
+
+    return str;
+}
+
+
+
+const char* parse_classfile_constants(const char* str, Class* clz, int constant_count)
+{
+    for (int i = 0; i < constant_count - 1; ++i) {
+        clz->constants_[i] = (const ClassFile::ConstantHeader*)str;
+        switch (static_cast<ClassFile::ConstantType>(*str)) {
+        default:
+            printf("error, constant %d\n", str[0]);
+            while (true) ;
+            break;
+
+        case ClassFile::ConstantType::t_class:
+            str += sizeof(ClassFile::ConstantClass);
+            break;
+
+        case ClassFile::ConstantType::t_field_ref:
+            str += sizeof(ClassFile::ConstantRef);
+            break;
+
+        case ClassFile::ConstantType::t_method_ref:
+            str += sizeof(ClassFile::ConstantRef);
+            break;
+
+        case ClassFile::ConstantType::t_interface_method_ref:
+            str += sizeof(ClassFile::ConstantRef);
+            break;
+
+        case ClassFile::ConstantType::t_string:
+            str += sizeof(ClassFile::ConstantString);
+            break;
+
+        case ClassFile::ConstantType::t_integer:
+            str += sizeof(ClassFile::ConstantInteger);
+            break;
+
+        case ClassFile::ConstantType::t_float:
+            str += sizeof(ClassFile::ConstantFloat);
+            break;
+
+        case ClassFile::ConstantType::t_long:
+            str += sizeof(ClassFile::ConstantLong);
+            break;
+
+        case ClassFile::ConstantType::t_double:
+            str += sizeof(ClassFile::ConstantDouble);
+            break;
+
+        case ClassFile::ConstantType::t_name_and_type:
+            str += sizeof(ClassFile::ConstantNameAndType);
+            break;
+
+        case ClassFile::ConstantType::t_utf8:
+            str += sizeof(ClassFile::ConstantUtf8)
+                + ((const ClassFile::ConstantUtf8*)str)->length_.get();
+            break;
+
+        case ClassFile::ConstantType::t_method_handle:
+            str += sizeof(ClassFile::ConstantMethodHandle);
+            break;
+
+        case ClassFile::ConstantType::t_method_type:
+            str += sizeof(ClassFile::ConstantMethodType);
+            break;
+
+        case ClassFile::ConstantType::t_invoke_dynamic:
+            str += sizeof(ClassFile::ConstantInvokeDynamic);
+            break;
+        }
+    }
+
+    return str;
+}
+
+
+
 Class* parse_classfile(Slice classname, const char* name)
 {
     if (auto str = get_file_contents(name)) {
@@ -456,76 +653,13 @@ Class* parse_classfile(Slice classname, const char* name)
             while (true) ; // TODO: raise error
         }
 
-        for (int i = 0; i < h1->constant_count_.get() - 1; ++i) {
-            clz->constants_[i] = (const ClassFile::ConstantHeader*)str;
-            switch (static_cast<ClassFile::ConstantType>(*str)) {
-            default:
-                printf("error, constant %d\n", str[0]);
-                while (true) ;
-                break;
-
-            case ClassFile::ConstantType::t_class:
-                str += sizeof(ClassFile::ConstantClass);
-                break;
-
-            case ClassFile::ConstantType::t_field_ref:
-                str += sizeof(ClassFile::ConstantRef);
-                break;
-
-            case ClassFile::ConstantType::t_method_ref:
-                str += sizeof(ClassFile::ConstantRef);
-                break;
-
-            case ClassFile::ConstantType::t_interface_method_ref:
-                str += sizeof(ClassFile::ConstantRef);
-                break;
-
-            case ClassFile::ConstantType::t_string:
-                str += sizeof(ClassFile::ConstantString);
-                break;
-
-            case ClassFile::ConstantType::t_integer:
-                str += sizeof(ClassFile::ConstantInteger);
-                break;
-
-            case ClassFile::ConstantType::t_float:
-                str += sizeof(ClassFile::ConstantFloat);
-                break;
-
-            case ClassFile::ConstantType::t_long:
-                str += sizeof(ClassFile::ConstantLong);
-                break;
-
-            case ClassFile::ConstantType::t_double:
-                str += sizeof(ClassFile::ConstantDouble);
-                break;
-
-            case ClassFile::ConstantType::t_name_and_type:
-                str += sizeof(ClassFile::ConstantNameAndType);
-                break;
-
-            case ClassFile::ConstantType::t_utf8:
-                str += sizeof(ClassFile::ConstantUtf8)
-                    + ((const ClassFile::ConstantUtf8*)str)->length_.get();
-                break;
-
-            case ClassFile::ConstantType::t_method_handle:
-                str += sizeof(ClassFile::ConstantMethodHandle);
-                break;
-
-            case ClassFile::ConstantType::t_method_type:
-                str += sizeof(ClassFile::ConstantMethodType);
-                break;
-
-            case ClassFile::ConstantType::t_invoke_dynamic:
-                str += sizeof(ClassFile::ConstantInvokeDynamic);
-                break;
-            }
-        }
+        str = parse_classfile_constants(str, clz, h1->constant_count_.get());
 
         auto h2 = reinterpret_cast<const ClassFile::HeaderSection2*>(str);
         str += sizeof(ClassFile::HeaderSection2);
 
+
+        clz->super_ = load_class(clz, h2->super_class_.get());
 
 
         if (h2->interfaces_count_.get()) {
@@ -533,13 +667,7 @@ Class* parse_classfile(Slice classname, const char* name)
             while (true) ;
         }
 
-        auto h3 = reinterpret_cast<const ClassFile::HeaderSection3*>(str);
-        str += sizeof(ClassFile::HeaderSection3);
-
-        if (h3->fields_count_.get()) {
-            printf("found %d fields!\n", h3->fields_count_.get());
-            while (true) ;
-        }
+        str = parse_classfile_fields(str, clz, h1->constant_count_.get());
 
         auto h4 = reinterpret_cast<const ClassFile::HeaderSection4*>(str);
         str += sizeof(ClassFile::HeaderSection4);

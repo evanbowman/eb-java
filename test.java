@@ -3,6 +3,11 @@
 
 class HelloWorldApp {
 
+
+    public int foo = 0;
+    public int bar = 0;
+
+
     public HelloWorldApp fn() {
         return this;
     }
@@ -23,6 +28,7 @@ class HelloWorldApp {
 
         while (true) {
             test(i++);
+            app.foo++;
             app.fn();
         }
     }

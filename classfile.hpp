@@ -43,6 +43,14 @@ struct ClassFile {
         // AttributeInfo attributes[attributes_count_];
     };
 
+    struct FieldInfo {
+        network_u16 access_flags_;
+        network_u16 name_index_;
+        network_u16 descriptor_index_;
+        network_u16 attributes_count_;
+        // AttributeInfo attributes[attribute_count_];
+    };
+
     struct AttributeInfo {
         network_u16 attribute_name_index_;
         network_u32 attribute_length_;
