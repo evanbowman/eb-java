@@ -237,9 +237,9 @@ Class* load_class(Class* current_module, u16 class_index)
 
 
 
-const ClassFile::MethodInfo* lookup_method(Class* clz,
-                                           Slice lhs_name,
-                                           Slice lhs_type)
+std::pair<const ClassFile::MethodInfo*, Class*> lookup_method(Class* clz,
+                                                              Slice lhs_name,
+                                                              Slice lhs_type)
 {
     if (clz->methods_) {
         for (int i = 0; i < clz->method_count_; ++i) {
@@ -250,12 +250,16 @@ const ClassFile::MethodInfo* lookup_method(Class* clz,
             auto rhs_type = clz->constants_->load_string(type_index);
 
             if (lhs_type == rhs_type and lhs_name == rhs_name) {
-                return clz->methods_[i];
+                return {clz->methods_[i], clz};
             }
         }
     }
 
-    return nullptr;
+    if (clz->super_ == nullptr) {
+        return {nullptr, clz};
+    } else {
+        return lookup_method(clz->super_, lhs_name, lhs_type);
+    }
 }
 
 
@@ -277,8 +281,9 @@ void dispatch_method(Class* clz, Object* self, u16 method_index)
     auto lhs_name = clz->constants_->load_string(nt->name_index_.get());
     auto lhs_type = clz->constants_->load_string(nt->descriptor_index_.get());
 
-    if (auto mtd = lookup_method(t_clz, lhs_name, lhs_type)) {
-        invoke_method(t_clz, self, mtd);
+    auto mtd = lookup_method(t_clz, lhs_name, lhs_type);
+    if (mtd.first) {
+        invoke_method(mtd.second, self, mtd.first);
     } else {
         // TODO: raise error
         puts("method lookup failed!");

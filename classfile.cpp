@@ -13,7 +13,16 @@ namespace java {
 
 
 
-const char* parse_classfile_fields(const char* str, Class* clz, int constant_count)
+// SubstitutionField link_field(Class* current, )
+// {
+//     return {};
+// }
+
+
+
+const char* parse_classfile_fields(const char* str,
+                                   Class* clz,
+                                   const ClassFile::HeaderSection1& h1)
 {
     // Here, we're loading the class file, and we want to determine all of the
     // correct byte offsets of all of the class instance's fields.
@@ -65,7 +74,7 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
 
             fields[i].size_ = field_size;
 
-            for (int j = 0; j < constant_count - 1; ++j) {
+            for (int j = 0; j < h1.constant_count_.get() - 1; ++j) {
                 int ind = j + 1;
 
                 auto c = clz->constants_->load(ind);
@@ -142,7 +151,7 @@ Class* parse_classfile(Slice classname, const char* name)
             while (true) ;
         }
 
-        str = parse_classfile_fields(str, clz, h1->constant_count_.get());
+        str = parse_classfile_fields(str, clz, *h1);
 
         auto h4 = reinterpret_cast<const ClassFile::HeaderSection4*>(str);
         str += sizeof(ClassFile::HeaderSection4);

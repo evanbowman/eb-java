@@ -37,6 +37,8 @@ class HelloWorldApp extends Example {
 
             if (app.foo > 20) {
                 app.fn();
+            } else {
+                app.testfn();
             }
         }
     }
