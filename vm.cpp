@@ -66,7 +66,7 @@ void push_operand(void* value)
 }
 
 
-void* get_operand(int offset)
+void* load_operand(int offset)
 {
     return __operand_stack[(__operand_stack.size() - 1) - offset];
 }
@@ -81,16 +81,39 @@ void pop_operand()
 
 struct Bytecode {
     enum : u8 {
-        iconst_0     = 0x03,
-        iconst_1     = 0x04,
-        istore_1     = 0x3c,
-        istore_2     = 0x3d,
-        istore_3     = 0x3e,
-        iload_1      = 0x1b,
-        iinc         = 0x84,
-        __goto       = 167,
-        invokestatic = 184,
-        vreturn      = 0xb1,
+        nop           = 0x00,
+        pop           = 0x57,
+        new_inst      = 0xbb,
+        dup           = 0x59,
+        aload         = 0x19,
+        aload_0       = 0x2a,
+        aload_1       = 0x2b,
+        aload_2       = 0x2c,
+        aload_3       = 0x2d,
+        astore        = 0x3a,
+        astore_0      = 0x4b,
+        astore_1      = 0x4c,
+        astore_2      = 0x4d,
+        astore_3      = 0x4e,
+        areturn       = 0xb0,
+        iconst_0      = 0x03,
+        iconst_1      = 0x04,
+        istore        = 0x36,
+        istore_0      = 0x3b,
+        istore_1      = 0x3c,
+        istore_2      = 0x3d,
+        istore_3      = 0x3e,
+        iload         = 0x15,
+        iload_0       = 0x1a,
+        iload_1       = 0x1b,
+        iload_2       = 0x1c,
+        iload_3       = 0x1d,
+        iinc          = 0x84,
+        __goto        = 167,
+        invokestatic  = 184,
+        invokevirtual = 0xb6,
+        invokespecial = 0xb7,
+        vreturn       = 0xb1,
     };
 };
 
@@ -110,7 +133,9 @@ void execute_bytecode(Class* clz, const u8* bytecode);
 
 
 
-void invoke_method(Class* clz, const ClassFile::MethodInfo* method)
+void invoke_method(Class* clz,
+                   Object* self,
+                   const ClassFile::MethodInfo* method)
 {
     for (int i = 0; i < method->attributes_count_.get(); ++i) {
         auto attr =
@@ -126,9 +151,11 @@ void invoke_method(Class* clz, const ClassFile::MethodInfo* method)
 
             const auto local_count =
                 std::max(((ClassFile::AttributeCode*)attr)->max_locals_.get(),
-                         (u16)4);
+                         (u16)4); // Why a min of four? istore_0-3, so there
+                                  // must be at least four slots.
 
             alloc_locals(local_count);
+            store_local(0, self);
 
             execute_bytecode(clz, bytecode);
 
@@ -157,28 +184,85 @@ Class* load_class(Class* current_module, u16 class_index)
 
 
 
-void invoke_static(Class* clz, u16 index)
+// I know, this is unfortunately quite slow. If we had tons of memory to work
+// with, we'd create all sorts of fast dispatch tables and stuff, but this VM is
+// intended to be used for a system with limited memory, so we just can't create
+// sparse lookup tables for every class in a program.
+const ClassFile::MethodInfo* lookup_method(Class* clz,
+                                           Slice lhs_name,
+                                           Slice lhs_type)
 {
-    auto ref = (const ClassFile::ConstantRef*)clz->load_constant(index);
+    if (clz->methods_) {
+        for (int i = 0; i < clz->method_count_; ++i) {
+            u16 name_index = clz->methods_[i]->name_index_.get();
+            u16 type_index = clz->methods_[i]->descriptor_index_.get();
+
+            auto rhs_name = clz->load_string_constant(name_index);
+            auto rhs_type = clz->load_string_constant(type_index);
+
+            if (lhs_type == rhs_type and lhs_name == rhs_name) {
+                return clz->methods_[i];
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+
+
+void dispatch_method(Class* clz, Object* self, u16 method_index)
+{
+    auto ref = (const ClassFile::ConstantRef*)clz->load_constant(method_index);
 
     Class* t_clz = load_class(clz, ref->class_index_.get());
-
     if (t_clz == nullptr) {
-        puts("failed to load class, TODO: raise error...");
+        printf("failed to load class %d, TODO: raise error...\n",
+               ref->class_index_.get());
         while (true) ;
     }
 
     auto nt = (const ClassFile::ConstantNameAndType*)
-        t_clz->load_constant(ref->name_and_type_index_.get());
+        clz->load_constant(ref->name_and_type_index_.get());
 
-    if (t_clz->methods_) {
-        for (int i = 0; i < t_clz->method_count_; ++i) {
-            if (t_clz->methods_[i]->name_index_.get() == nt->name_index_.get() and
-                t_clz->methods_[i]->descriptor_index_.get() == nt->descriptor_index_.get()) {
-                invoke_method(t_clz, t_clz->methods_[i]);
-            }
-        }
+    auto lhs_name = clz->load_string_constant(nt->name_index_.get());
+    auto lhs_type = clz->load_string_constant(nt->descriptor_index_.get());
+
+    if (auto mtd = lookup_method(t_clz, lhs_name, lhs_type)) {
+        invoke_method(t_clz, self, mtd);
+    } else {
+        // TODO: raise error
+        puts("method lookup failed!");
+        while (true);
     }
+}
+
+
+
+void invoke_special(Class* clz, u16 method_index)
+{
+    auto self = (Object*)load_operand(0);
+    pop_operand();
+
+    dispatch_method(clz, self, method_index);
+}
+
+
+
+Object* make_instance(Class* clz, u16 class_constant)
+{
+    auto t_clz = load_class(clz, class_constant);
+
+    if (t_clz) {
+        auto mem = (Object*)malloc(100);
+        new (mem) Object();
+        mem->class_ = t_clz;
+        return mem;
+    }
+
+    // TODO: fatal error...
+    puts("warning! failed to alloc class!");
+    return nullptr;
 }
 
 
@@ -189,6 +273,29 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
     while (true) {
         switch (bytecode[pc]) {
+        case Bytecode::nop:
+            ++pc;
+            break;
+
+        case Bytecode::pop:
+            pop_operand();
+            ++pc;
+            break;
+
+        case Bytecode::new_inst:
+            push_operand(make_instance(clz, ((network_u16*)&bytecode[pc + 1])->get()));
+            pc += 3;
+            break;
+
+        case Bytecode::areturn:
+            // NOTE: we implement return values on the stack. nothing to do here.
+            return;
+
+        case Bytecode::dup:
+            push_operand(load_operand(0));
+            ++pc;
+            break;
+
         case Bytecode::iconst_0:
             push_operand((void*)(int)0);
             ++pc;
@@ -199,26 +306,71 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::astore:
+        case Bytecode::istore:
+            store_local(bytecode[pc + 1], load_operand(0));
+            pop_operand();
+            pc += 2;
+            break;
+
+        case Bytecode::astore_0:
+        case Bytecode::istore_0:
+            store_local(0, load_operand(0));
+            pop_operand();
+            ++pc;
+            break;
+
+        case Bytecode::astore_1:
         case Bytecode::istore_1:
-            store_local(1, get_operand(0));
+            store_local(1, load_operand(0));
+            // printf("store local 1 %p\n", load_operand(0));
             pop_operand();
             ++pc;
             break;
 
+        case Bytecode::astore_2:
         case Bytecode::istore_2:
-            store_local(2, get_operand(0));
+            store_local(2, load_operand(0));
             pop_operand();
             ++pc;
             break;
 
+        case Bytecode::astore_3:
         case Bytecode::istore_3:
-            store_local(3, get_operand(0));
+            store_local(3, load_operand(0));
             pop_operand();
             ++pc;
             break;
 
+        case Bytecode::aload:
+        case Bytecode::iload:
+            push_operand(load_local(bytecode[pc + 1]));
+            pc += 2;
+            break;
+
+        case Bytecode::aload_0:
+        case Bytecode::iload_0:
+            push_operand(load_local(0));
+            // printf("load0 %p\n", load_local(0));
+            ++pc;
+            break;
+
+        case Bytecode::aload_1:
         case Bytecode::iload_1:
             push_operand(load_local(1));
+            // printf("load1 %p\n", load_local(1));
+            ++pc;
+            break;
+
+        case Bytecode::aload_2:
+        case Bytecode::iload_2:
+            push_operand(load_local(2));
+            ++pc;
+            break;
+
+        case Bytecode::aload_3:
+        case Bytecode::iload_3:
+            push_operand(load_local(3));
             ++pc;
             break;
 
@@ -240,7 +392,26 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
         case Bytecode::invokestatic:
             ++pc;
-            invoke_static(clz, ((network_u16*)(bytecode + pc))->get());
+            dispatch_method(clz,
+                            nullptr,
+                            ((network_u16*)(bytecode + pc))->get());
+            pc += 2;
+            break;
+
+        case Bytecode::invokevirtual: {
+            ++pc;
+            auto obj = (Object*)load_operand(0);
+            pop_operand();
+            dispatch_method(clz,
+                            obj,
+                            ((network_u16*)(bytecode + pc))->get());
+            pc += 2;
+            break;
+        }
+
+        case Bytecode::invokespecial:
+            ++pc;
+            invoke_special(clz, ((network_u16*)(bytecode + pc))->get());
             pc += 2;
             break;
 
@@ -355,6 +526,8 @@ Class* parse_classfile(Slice classname, const char* name)
         auto h2 = reinterpret_cast<const ClassFile::HeaderSection2*>(str);
         str += sizeof(ClassFile::HeaderSection2);
 
+
+
         if (h2->interfaces_count_.get()) {
             puts("TODO: load interfaces from classfile!");
             while (true) ;
@@ -374,7 +547,7 @@ Class* parse_classfile(Slice classname, const char* name)
         if (h4->methods_count_.get()) {
 
             clz->methods_ =
-                (ClassFile::MethodInfo**)
+                (const ClassFile::MethodInfo**)
                 malloc(sizeof(ClassFile::MethodInfo*)
                        * h4->methods_count_.get());
 
@@ -432,6 +605,18 @@ Class* parse_classfile(Slice classname, const char* name)
 
 
 
+void bootstrap()
+{
+    // NOTE: I manually edited the bytecode in the Object classfile, which is
+    // why I do not provide the source code. It's hand-rolled java bytecode.
+    if (parse_classfile(Slice::from_c_str("java/lang/Object"),
+                        "Object.class")) {
+        puts("successfully loaded Object root!");
+    }
+}
+
+
+
 }
 
 
@@ -448,12 +633,14 @@ Class* parse_classfile(Slice classname, const char* name)
 
 int main()
 {
+    java::jvm::bootstrap();
+
     if (auto clz = java::jvm::parse_classfile(java::Slice::from_c_str("HelloWorldApp"),
                                               "HelloWorldApp.class")) {
         puts("parsed classfile header correctly");
 
         if (auto entry = clz->load_method("main")) {
-            java::jvm::invoke_method(clz, entry);
+            java::jvm::invoke_method(clz, nullptr, entry);
         }
 
     } else {
