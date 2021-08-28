@@ -4,8 +4,10 @@
 class HelloWorldApp {
 
 
-    public int foo = 0;
+    public short foo = 0;
     public int bar = 0;
+    public float baz = 10.f;
+    public char c = 'A';
 
 
     public HelloWorldApp fn() {
@@ -27,10 +29,15 @@ class HelloWorldApp {
         int l = 1;
 
         while (true) {
+
             test(i++);
             app.foo++;
             app.bar++;
-            app.fn();
+            app.baz++;
+
+            if (app.foo > 20) {
+                app.fn();
+            }
         }
     }
 }

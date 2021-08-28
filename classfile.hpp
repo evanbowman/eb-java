@@ -2,6 +2,7 @@
 
 #include "endian.hpp"
 #include <stdio.h>
+#include "slice.hpp"
 
 
 
@@ -218,6 +219,14 @@ struct ClassFile {
         }
     }
 };
+
+
+
+struct Class;
+
+
+
+Class* parse_classfile(Slice classname, const char* name);
 
 
 

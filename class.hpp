@@ -34,7 +34,6 @@ struct SubstitutionField {
 
 
 struct Class {
-
     ConstantPool* constants_;
 
     const ClassFile::MethodInfo** methods_ = nullptr;

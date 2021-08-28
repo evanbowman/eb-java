@@ -9,10 +9,6 @@
 
 
 
-const char* get_file_contents(const char* file);
-
-
-
 namespace java {
 namespace jvm {
 
@@ -56,9 +52,34 @@ void push_operand(void* value)
 }
 
 
+void push_operand(float* value)
+{
+    push_operand((void*)(intptr_t)*(int*)value);
+}
+
+
 void* load_operand(int offset)
 {
     return __operand_stack[(__operand_stack.size() - 1) - offset];
+}
+
+
+float __load_operand_f_impl(void** val)
+{
+    return *(float*)val;
+}
+
+
+float load_operand_f(int offset)
+{
+    auto val = load_operand(offset);
+    return __load_operand_f_impl(&val);
+}
+
+
+int load_operand_i(int offset)
+{
+    return (int)(intptr_t)load_operand(offset);
 }
 
 
@@ -73,8 +94,10 @@ struct Bytecode {
     enum : u8 {
         nop           = 0x00,
         pop           = 0x57,
+        ldc           = 0x12,
         new_inst      = 0xbb,
         dup           = 0x59,
+        bipush        = 0x10,
         aload         = 0x19,
         aload_0       = 0x2a,
         aload_1       = 0x2b,
@@ -88,6 +111,10 @@ struct Bytecode {
         areturn       = 0xb0,
         iconst_0      = 0x03,
         iconst_1      = 0x04,
+        iconst_2      = 0x05,
+        iconst_3      = 0x06,
+        iconst_4      = 0x07,
+        iconst_5      = 0x08,
         istore        = 0x36,
         istore_0      = 0x3b,
         istore_1      = 0x3c,
@@ -99,11 +126,37 @@ struct Bytecode {
         iload_2       = 0x1c,
         iload_3       = 0x1d,
         iadd          = 0x60,
+        isub          = 0x64,
+        idiv          = 0x6c,
+        i2s           = 0x93,
+        iinc          = 0x84,
+        if_acmpeq     = 0xa5,
+        if_acmpne     = 0xa6,
+        if_icmpeq     = 0x9f,
+        if_icmpne     = 0xa0,
+        if_icmplt     = 0xa1,
+        if_icmpge     = 0xa2,
+        if_icmpgt     = 0xa3,
+        if_icmple     = 0xa4,
+        if_eq         = 0x99,
+        if_ne         = 0x9a,
+        if_lt         = 0x9b,
+        if_ge         = 0x9c,
+        if_gt         = 0x9d,
+        if_le         = 0x9e,
+        if_nonnull    = 0xc7,
+        if_null       = 0xc6,
+        fconst_0      = 0x0b,
+        fconst_1      = 0x0c,
+        fconst_2      = 0x0d,
+        fadd          = 0x62,
+        fdiv          = 0x6e,
+        fmul          = 0x6a,
         getfield      = 0xb4,
         putfield      = 0xb5,
-        iinc          = 0x84,
-        __goto        = 167,
-        invokestatic  = 184,
+        __goto        = 0xa7,
+        __goto_w      = 0xc8,
+        invokestatic  = 0xb8,
         invokevirtual = 0xb6,
         invokespecial = 0xb7,
         vreturn       = 0xb1,
@@ -118,7 +171,14 @@ struct ClassTableEntry {
 
 
 
-std::vector<ClassTableEntry> class_table;
+static std::vector<ClassTableEntry> class_table;
+
+
+
+void register_class(Slice name, Class* clz)
+{
+    class_table.push_back({name, clz});
+}
 
 
 
@@ -177,10 +237,6 @@ Class* load_class(Class* current_module, u16 class_index)
 
 
 
-// I know, this is unfortunately quite slow. If we had tons of memory to work
-// with, we'd create all sorts of fast dispatch tables and stuff, but this VM is
-// intended to be used for a system with limited memory, so we just can't create
-// sparse lookup tables for every class in a program.
 const ClassFile::MethodInfo* lookup_method(Class* clz,
                                            Slice lhs_name,
                                            Slice lhs_type)
@@ -244,12 +300,12 @@ void invoke_special(Class* clz, u16 method_index)
 
 
 
-void* jvm_malloc(size_t size)
+void* malloc(size_t size)
 {
     static size_t total = 0;
     total += size;
     printf("vm malloc %zu (total %zu)\n", size, total);
-    return malloc(size);
+    return ::malloc(size);
 }
 
 
@@ -264,7 +320,7 @@ Object* make_instance(Class* clz, u16 class_constant)
         printf("highest field offset: %d\n", sub->offset_);
         printf("instance size %ld\n", sizeof(Object) + sub->offset_ + (1 << sub->size_));
 
-        auto mem = (Object*)jvm_malloc(sizeof(Object) + sub->offset_ + (1 << sub->size_));
+        auto mem = (Object*)jvm::malloc(sizeof(Object) + sub->offset_ + (1 << sub->size_));
         new (mem) Object();
         mem->class_ = t_clz;
         return mem;
@@ -292,6 +348,27 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::ldc: {
+            auto c = clz->constants_->load(bytecode[pc + 1]);
+            switch (c->tag_) {
+            case ClassFile::ConstantType::t_float: {
+                auto cfl = (ClassFile::ConstantFloat*)c;
+                float result;
+                auto input = cfl->value_.get();
+                memcpy(&result, &input, sizeof(float));
+                push_operand(&result);
+                break;
+            }
+
+            default:
+                puts("unhandled ldc...");
+                while (true) ;
+                break;
+            }
+            pc += 2;
+            break;
+        }
+
         case Bytecode::new_inst:
             push_operand(make_instance(clz, ((network_u16*)&bytecode[pc + 1])->get()));
             // printf("new %p\n", load_operand(0));
@@ -301,6 +378,11 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::areturn:
             // NOTE: we implement return values on the stack. nothing to do here.
             return;
+
+        case Bytecode::bipush:
+            push_operand((void*)(intptr_t)(int)bytecode[pc + 1]);
+            pc += 2;
+            break;
 
         case Bytecode::dup:
             // printf("dup %p\n", load_operand(0));
@@ -315,6 +397,26 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
         case Bytecode::iconst_1:
             push_operand((void*)(int)1);
+            ++pc;
+            break;
+
+        case Bytecode::iconst_2:
+            push_operand((void*)(int)2);
+            ++pc;
+            break;
+
+        case Bytecode::iconst_3:
+            push_operand((void*)(int)3);
+            ++pc;
+            break;
+
+        case Bytecode::iconst_4:
+            push_operand((void*)(int)4);
+            ++pc;
+            break;
+
+        case Bytecode::iconst_5:
+            push_operand((void*)(int)5);
             ++pc;
             break;
 
@@ -336,14 +438,243 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             // while (true) ;
             break;
 
-        case Bytecode::iadd: {
-            const int result =
-                (int)(intptr_t)load_operand(0) +
-                (int)(intptr_t)load_operand(1);
+        case Bytecode::isub: {
+            const int result = load_operand_i(0) - load_operand_i(1);
             pop_operand();
             pop_operand();
             push_operand((void*)(intptr_t)result);
             pc += 1;
+            break;
+        }
+
+        case Bytecode::iadd: {
+            const int result = load_operand_i(0) + load_operand_i(1);
+            pop_operand();
+            pop_operand();
+            push_operand((void*)(intptr_t)result);
+            pc += 1;
+            break;
+        }
+
+        case Bytecode::idiv: {
+            const int result = load_operand_i(0) / load_operand_i(1);
+            pop_operand();
+            pop_operand();
+            push_operand((void*)(intptr_t)result);
+            pc += 1;
+            break;
+        }
+
+        case Bytecode::i2s: {
+            short val = load_operand_i(0);
+            pop_operand();
+            push_operand((void*)(intptr_t)val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::if_acmpeq:
+            if (load_operand(0) == load_operand(1)) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            pop_operand();
+            break;
+
+        case Bytecode::if_acmpne:
+            if (load_operand(0) not_eq load_operand(1)) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            pop_operand();
+            break;
+
+        case Bytecode::if_icmpeq:
+            if (load_operand_i(0) == load_operand_i(1)) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            pop_operand();
+            break;
+
+        case Bytecode::if_icmpne:
+            if (load_operand_i(0) not_eq load_operand_i(1)) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            pop_operand();
+            break;
+
+        case Bytecode::if_icmplt:
+            if (load_operand_i(0) < load_operand_i(1)) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            pop_operand();
+            break;
+
+        case Bytecode::if_icmpge:
+            if (load_operand_i(0) > load_operand_i(1)) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            pop_operand();
+            break;
+
+        case Bytecode::if_icmple:
+            if (load_operand_i(0) <= load_operand_i(1)) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            pop_operand();
+            break;
+
+        case Bytecode::if_eq:
+            if (load_operand_i(0) == 0) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            break;
+
+        case Bytecode::if_ne:
+            if (load_operand_i(0) not_eq 0) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            break;
+
+        case Bytecode::if_lt:
+            if (load_operand_i(0) < 0) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            break;
+
+        case Bytecode::if_ge:
+            if (load_operand_i(0) >= 0) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            break;
+
+        case Bytecode::if_gt:
+            if (load_operand_i(0) > 0) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            break;
+
+        case Bytecode::if_le:
+            if (load_operand_i(0) < 0) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            break;
+
+        case Bytecode::if_nonnull:
+            if (load_operand(0) not_eq nullptr) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            break;
+
+        case Bytecode::if_null:
+            if (load_operand(0) == nullptr) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            break;
+
+        case Bytecode::fconst_0: {
+            static_assert(sizeof(float) == sizeof(int) and
+                          sizeof(void*) >= sizeof(float),
+                          "undefined behavior");
+            auto f = 0.f;
+            push_operand(&f);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::fconst_1: {
+            static_assert(sizeof(float) == sizeof(int) and
+                          sizeof(void*) >= sizeof(float),
+                          "undefined behavior");
+            auto f = 1.f;
+            push_operand(&f);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::fconst_2: {
+            static_assert(sizeof(float) == sizeof(int) and
+                          sizeof(void*) >= sizeof(float),
+                          "undefined behavior");
+            auto f = 2.f;
+            push_operand(&f);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::fadd: {
+            float lhs = load_operand_f(0);
+            float rhs = load_operand_f(1);
+            pop_operand();
+            pop_operand();
+            auto result = lhs + rhs;
+            push_operand(&result);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::fdiv: {
+            float lhs = load_operand_f(0);
+            float rhs = load_operand_f(1);
+            pop_operand();
+            pop_operand();
+            auto result = lhs / rhs;
+            push_operand(&result);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::fmul: {
+            float lhs = load_operand_f(0);
+            float rhs = load_operand_f(1);
+            pop_operand();
+            pop_operand();
+            auto result = lhs * rhs;
+            push_operand(&result);
+            ++pc;
             break;
         }
 
@@ -428,6 +759,10 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pc += ((network_s16*)(bytecode + pc + 1))->get();
             break;
 
+        case Bytecode::__goto_w:
+            pc += ((network_s32*)(bytecode + pc + 1))->get();
+            break;
+
         case Bytecode::vreturn:
             return;
 
@@ -457,207 +792,13 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
 
         default:
-            printf("unrecognized bytecode instruction %d\n", bytecode[pc]);
+            printf("unrecognized bytecode instruction %#02x\n", bytecode[pc]);
             for (int i = 0; i < 10; ++i) {
                 std::cout << (int)bytecode[i] << std::endl;
             }
             while (true) ;
         }
     }
-}
-
-
-
-const char* parse_classfile_fields(const char* str, Class* clz, int constant_count)
-{
-    // Here, we're loading the class file, and we want to determine all of the
-    // correct byte offsets of all of the class instance's fields.
-
-    auto h3 = reinterpret_cast<const ClassFile::HeaderSection3*>(str);
-    str += sizeof(ClassFile::HeaderSection3);
-
-    if (auto nfields = h3->fields_count_.get()) {
-
-        auto fields = (SubstitutionField*)jvm_malloc(sizeof(SubstitutionField) * nfields);
-
-        u16 offset = 0;
-
-        clz->constants_->reserve_fields(nfields);
-
-        for (int i = 0; i < nfields; ++i) {
-            auto field = (const ClassFile::FieldInfo*)str;
-            str += sizeof(ClassFile::FieldInfo);
-
-            printf("field %d has offset %d\n", i, offset);
-
-            fields[i].offset_ = offset;
-
-            // printf("field desc %d\n", );
-
-            SubstitutionField::Size field_size = SubstitutionField::b4;
-
-
-            puts("load field type");
-            auto field_type =
-                clz->constants_->load_string(field->descriptor_index_.get());
-
-            puts("load field name");
-            auto field_name =
-                clz->constants_->load_string(field->name_index_.get());
-
-
-            if (field_type == Slice::from_c_str("I")) {
-                field_size = SubstitutionField::b4;
-            } else if (field_type == Slice::from_c_str("S")) {
-                field_size = SubstitutionField::b2;
-            } else {
-                std::cout << std::string(field_type.ptr_, field_type.length_) << std::endl;
-                puts("TODO: field sizes...");
-                while (true) ;
-            }
-
-            fields[i].size_ = field_size;
-
-            puts("try bind constant");
-            for (int j = 0; j < constant_count - 1; ++j) {
-                int ind = j + 1;
-
-                auto c = clz->constants_->load(ind);
-
-                if (c->tag_ == ClassFile::ConstantType::t_field_ref) {
-                    auto ref = ((ClassFile::ConstantRef*)c);
-                    auto nt = (ClassFile::ConstantNameAndType*)
-                        clz->constants_->load(ref->name_and_type_index_.get());
-
-                    // FIXME: we also need to verify that the class type matches...
-                    if (clz->constants_->load_string(nt->name_index_.get()) == field_name and
-                        clz->constants_->load_string(nt->descriptor_index_.get()) == field_type) {
-                        printf("found field at %d\n", ind);
-
-                        clz->constants_->bind_field(ind, &fields[i]);
-                        clz->cpool_highest_field_ = ind;
-                    }
-
-                }
-            }
-
-
-            offset += (1 << field_size);
-
-
-            for (int i = 0; i < field->attributes_count_.get(); ++i) {
-                auto attr = (ClassFile::AttributeInfo*)str;
-                str +=
-                    sizeof(ClassFile::AttributeInfo) +
-                    attr->attribute_length_.get();
-            }
-        }
-    }
-
-    return str;
-}
-
-
-
-Class* parse_classfile(Slice classname, const char* name)
-{
-    if (auto str = get_file_contents(name)) {
-        auto h1 = reinterpret_cast<const ClassFile::HeaderSection1*>(str);
-
-        if (h1->magic_.get() not_eq 0xcafebabe) {
-            return nullptr;
-        }
-
-        auto clz = (Class*)jvm_malloc(sizeof(Class));
-
-        if (not clz) {
-            puts("failed to alloc constant class memory");
-            while (true) ; // TODO: raise error
-        }
-
-        new (clz)Class();
-
-        str += sizeof(ClassFile::HeaderSection1);
-
-
-        clz->constants_ = new ConstantPoolCompactImpl();
-        str = clz->constants_->parse(*h1);
-
-
-        auto h2 = reinterpret_cast<const ClassFile::HeaderSection2*>(str);
-        str += sizeof(ClassFile::HeaderSection2);
-
-
-        clz->super_ = load_class(clz, h2->super_class_.get());
-
-
-        if (h2->interfaces_count_.get()) {
-            puts("TODO: load interfaces from classfile!");
-            while (true) ;
-        }
-
-        str = parse_classfile_fields(str, clz, h1->constant_count_.get());
-
-        auto h4 = reinterpret_cast<const ClassFile::HeaderSection4*>(str);
-        str += sizeof(ClassFile::HeaderSection4);
-
-        if (h4->methods_count_.get()) {
-
-            clz->methods_ =
-                (const ClassFile::MethodInfo**)
-                jvm_malloc(sizeof(ClassFile::MethodInfo*)
-                       * h4->methods_count_.get());
-
-            if (clz->methods_ == nullptr) {
-                puts("failed to alloc method table");
-                while (true) ; // TODO: raise error...
-            }
-
-            clz->method_count_ = h4->methods_count_.get();
-
-            for (int i = 0; i < h4->methods_count_.get(); ++i) {
-                auto method = (ClassFile::MethodInfo*)str;
-                str += sizeof(ClassFile::MethodInfo*);
-
-                clz->methods_[i] = method;
-
-                for (int i = 0; i < method->attributes_count_.get(); ++i) {
-                    auto attr = (ClassFile::AttributeInfo*)str;
-                    str +=
-                        sizeof(ClassFile::AttributeInfo) +
-                        attr->attribute_length_.get();
-                }
-            }
-        }
-
-
-        auto h5 = reinterpret_cast<const ClassFile::HeaderSection5*>(str);
-        str += sizeof(ClassFile::HeaderSection5);
-
-        if (h5->attributes_count_.get()) {
-            for (int i = 0; i < h5->attributes_count_.get(); ++i) {
-                auto attr = (ClassFile::AttributeInfo*)str;
-                str +=
-                    sizeof(ClassFile::AttributeInfo) +
-                    attr->attribute_length_.get();
-
-                auto attr_name =
-                    clz->constants_->load_string(attr->attribute_name_index_.get());
-
-                if (attr_name == Slice::from_c_str("SourceFile")) {
-                    // TODO...
-                } else {
-                    // TOOD...
-                }
-            }
-        }
-
-        class_table.push_back({classname, clz});
-
-        return clz;
-    }
-
-    return nullptr;
 }
 
 
@@ -692,8 +833,8 @@ int main()
 {
     java::jvm::bootstrap();
 
-    if (auto clz = java::jvm::parse_classfile(java::Slice::from_c_str("HelloWorldApp"),
-                                              "HelloWorldApp.class")) {
+    if (auto clz = java::parse_classfile(java::Slice::from_c_str("HelloWorldApp"),
+                                         "HelloWorldApp.class")) {
         puts("parsed classfile header correctly");
 
         if (auto entry = clz->load_method("main")) {
@@ -703,34 +844,4 @@ int main()
     } else {
         puts("failed to parse class file");
     }
-}
-
-
-
-
-
-
-
-#include <stdio.h>
-#include <stdlib.h>
-
-
-const char* get_file_contents(const char* name)
-{
-    char * buffer = 0;
-    long length;
-    FILE * f = fopen(name, "rb");
-
-    if (f) {
-        fseek (f, 0, SEEK_END);
-        length = ftell (f);
-        fseek (f, 0, SEEK_SET);
-        buffer = (char*)malloc (length);
-        if (buffer) {
-            fread(buffer, 1, length, f);
-        }
-        fclose (f);
-    }
-
-    return buffer;
 }

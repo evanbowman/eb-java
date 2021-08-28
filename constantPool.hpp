@@ -58,23 +58,7 @@ class ConstantPoolArrayImpl : public ConstantPool {
 public:
 
 
-    const char* parse(const ClassFile::HeaderSection1& src) override
-    {
-        array_ = (const ClassFile::ConstantHeader**)
-            malloc(sizeof(ClassFile::ConstantHeader*) *
-                   src.constant_count_.get() - 1);
-
-        const char* str =
-            ((const char*)&src) + sizeof(ClassFile::HeaderSection1);
-
-
-        for (int i = 0; i < src.constant_count_.get() - 1; ++i) {
-            array_[i] = (const ClassFile::ConstantHeader*)str;
-            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
-        }
-
-        return str;
-    }
+    const char* parse(const ClassFile::HeaderSection1& src) override;
 
 
     const ClassFile::ConstantHeader* load(u16 index) override
@@ -150,24 +134,7 @@ public:
     };
 
 
-    void reserve_fields(int count) override
-    {
-        if (bindings_) {
-            puts("error: reserve_fields!");
-            while (true) ;
-        }
-
-        bindings_ = (FieldBinding*)malloc(sizeof(FieldBinding) * count);
-
-        memset(bindings_, 0, sizeof(FieldBinding) * count);
-
-        if (bindings_ == nullptr) {
-            puts("malloc failed!");
-            while (true) ;
-        }
-
-        binding_count_ = count;
-    }
+    void reserve_fields(int count) override;
 
 
     void bind_field(u16 index, void* field) override
@@ -191,6 +158,38 @@ private:
     FieldBinding* bindings_ = nullptr;
     const ClassFile::HeaderSection1* info_;
     u16 binding_count_ = 0;
+};
+
+
+
+// A balanced constant pool class. More compact than a large array
+// implementation, but caches some recent constant lookups in a local buffer.
+class ConstantPoolCompactCachingImpl : public ConstantPoolCompactImpl {
+private:
+
+    struct {
+        u16 index_ = 0;
+        const ClassFile::ConstantHeader* constant_ = nullptr;
+    } cache_[4];
+
+    u8 evict_ = 0;
+
+public:
+
+    const ClassFile::ConstantHeader* load(u16 index) override
+    {
+        for (auto& elem : cache_) {
+            if (elem.index_ == index and elem.constant_) {
+                return elem.constant_;
+            }
+        }
+
+        auto found = ConstantPoolCompactImpl::load(index);
+
+        cache_[evict_++ % 4] = {index, found};
+
+        return found;
+    }
 };
 
 
