@@ -104,4 +104,25 @@ void Class::put_field(Object* obj, u16 index, void* value)
 
 
 
+size_t Class::instance_fields_size()
+{
+    Class* current = this;
+
+    while (current) {
+        if (current->cpool_highest_field_ not_eq -1) {
+            auto sub = (SubstitutionField*)
+                current->constants_->load(current->cpool_highest_field_);
+
+            return sub->offset_ + (1 << sub->size_);
+
+        } else {
+            current = current->super_;
+        }
+    }
+
+    return 0;
+}
+
+
+
 }

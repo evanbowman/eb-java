@@ -41,7 +41,7 @@ struct Class {
 
     // We keep track of the highest index of SubstitutionField in our class
     // instance. In doing so, we know how large class instances need to be.
-    u16 cpool_highest_field_ = 0;
+    s16 cpool_highest_field_ = -1;
 
     u16 method_count_ = 0;
 
@@ -54,6 +54,11 @@ struct Class {
 
 
     void* get_field(Object* obj, u16 const_pool_index);
+
+
+    // The extra memory required to hold all fields of an instance of this
+    // class.
+    size_t instance_fields_size();
 };
 
 

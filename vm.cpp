@@ -315,12 +315,12 @@ Object* make_instance(Class* clz, u16 class_constant)
     auto t_clz = load_class(clz, class_constant);
 
     if (t_clz) {
-        auto sub = (SubstitutionField*)clz->constants_->load(clz->cpool_highest_field_);
 
-        printf("highest field offset: %d\n", sub->offset_);
-        printf("instance size %ld\n", sizeof(Object) + sub->offset_ + (1 << sub->size_));
+        const auto fields_size = clz->instance_fields_size();
 
-        auto mem = (Object*)jvm::malloc(sizeof(Object) + sub->offset_ + (1 << sub->size_));
+        printf("instance size %ld\n", fields_size);
+
+        auto mem = (Object*)jvm::malloc(sizeof(Object) + fields_size);
         new (mem) Object();
         mem->class_ = t_clz;
         return mem;
@@ -833,7 +833,12 @@ int main()
 {
     java::jvm::bootstrap();
 
-    if (auto clz = java::parse_classfile(java::Slice::from_c_str("HelloWorldApp"),
+    if (java::parse_classfile(java::Slice::from_c_str("test/Example"),
+                              "Example.class")) {
+        puts("parsed base class");
+    }
+
+    if (auto clz = java::parse_classfile(java::Slice::from_c_str("test/HelloWorldApp"),
                                          "HelloWorldApp.class")) {
         puts("parsed classfile header correctly");
 

@@ -1,8 +1,8 @@
+package test;
 
 
 
-class HelloWorldApp {
-
+class HelloWorldApp extends Example {
 
     public short foo = 0;
     public int bar = 0;

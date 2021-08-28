@@ -25,7 +25,7 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
 
         auto fields = (SubstitutionField*)jvm::malloc(sizeof(SubstitutionField) * nfields);
 
-        u16 offset = 0;
+        u16 offset = clz->super_->instance_fields_size();
 
         clz->constants_->reserve_fields(nfields);
 
@@ -42,11 +42,9 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
             SubstitutionField::Size field_size = SubstitutionField::b4;
 
 
-            puts("load field type");
             auto field_type =
                 clz->constants_->load_string(field->descriptor_index_.get());
 
-            puts("load field name");
             auto field_name =
                 clz->constants_->load_string(field->name_index_.get());
 
@@ -67,7 +65,6 @@ const char* parse_classfile_fields(const char* str, Class* clz, int constant_cou
 
             fields[i].size_ = field_size;
 
-            puts("try bind constant");
             for (int j = 0; j < constant_count - 1; ++j) {
                 int ind = j + 1;
 
