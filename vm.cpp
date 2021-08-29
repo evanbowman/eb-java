@@ -1382,9 +1382,13 @@ void start(const char* jar_file_bytes)
 #include <fstream>
 #include <streambuf>
 
-int main()
+int main(int argc, char** argv)
 {
-    std::ifstream t("TEST2.jar");
+    if (argc != 2) {
+        return 1;
+    }
+
+    std::ifstream t(argv[1]);
     std::string str((std::istreambuf_iterator<char>(t)),
                     std::istreambuf_iterator<char>());
 
@@ -1392,13 +1396,6 @@ int main()
 
 
     java::jvm::bootstrap();
-
-    // if (java::parse_classfile(java::Slice::from_c_str("test/Example"),
-    //                           java::jvm::get_file_contents("Example.class"))) {
-    //     puts("parsed base class");
-    // }
-
-    java::jvm::import(java::Slice::from_c_str("test/Example"));
 
     if (auto clz = java::jvm::import(java::Slice::from_c_str("test/HelloWorldApp"))) {
         puts("import main class success!");
