@@ -22,7 +22,8 @@ struct Slice {
 
     bool operator==(const Slice& other) const
     {
-        return strncmp(other.ptr_, ptr_, std::min(length_, other.length_)) == 0;
+        return length_ == other.length_ and
+            strncmp(other.ptr_, ptr_, length_) == 0;
     }
 };
 

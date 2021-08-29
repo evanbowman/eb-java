@@ -10,6 +10,11 @@ namespace jvm {
 
 
 
+// Start the VM, passing in a pointer to jar file contents.
+void start(const u8* jar_file_bytes);
+
+
+
 void register_class(Slice name, Class* clz);
 
 

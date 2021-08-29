@@ -6,11 +6,16 @@
 #include <string.h>
 #include <vector>
 #include "array.hpp"
+#include "jar.hpp"
 
 
 
 namespace java {
 namespace jvm {
+
+
+
+static const char* jar_file_data;
 
 
 
@@ -40,6 +45,7 @@ static Class reference_array_class {
 // operand stack element is primitive or instance.
 std::vector<void*> __operand_stack;
 std::vector<void*> __locals;
+
 
 
 void store_local(int index, void* value)
@@ -301,6 +307,10 @@ Class* load_class(Class* current_module, u16 class_index)
             return entry.class_;
         }
     }
+
+    // Ok, if we haven't found the class yet, we should go ahead and dynamically
+    // load it!
+    // TODO: load class from jar
 
     return nullptr;
 }
@@ -1294,6 +1304,17 @@ void bootstrap()
         primitive_array_class.super_ = obj_class;
         reference_array_class.super_ = obj_class;
     }
+}
+
+
+
+void start(const char* jar_file_bytes)
+{
+    jar_file_data = jar_file_bytes;
+
+    bootstrap();
+
+
 }
 
 
