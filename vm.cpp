@@ -76,15 +76,36 @@ void free_locals(int count)
 }
 
 
-void push_operand(void* value)
+void push_operand_p(void* value)
 {
     __operand_stack.push_back(value);
 }
 
 
-void push_operand(float* value)
+// Soon, when we add garbage collection, we'll need to make a special
+// distinction for objects vs primitives on the operand stack, so we should
+// remember to push objects with push_operand_a.
+void push_operand_a(Object& value)
 {
-    push_operand((void*)(intptr_t)*(int*)value);
+    push_operand_p(&value);
+}
+
+
+void push_operand_i(s32 value)
+{
+    push_operand_p((void*)(intptr_t)value);
+}
+
+
+void __push_operand_f_impl(float* value)
+{
+    push_operand_p((void*)(intptr_t)*(int*)value);
+}
+
+
+void push_operand_f(float value)
+{
+    __push_operand_f_impl(&value);
 }
 
 
@@ -113,6 +134,52 @@ s32 load_operand_i(int offset)
 }
 
 
+void push_wide_operand(void* value)
+{
+    s32* words = (s32*)value;
+    push_operand_i(words[0]);
+    push_operand_i(words[1]);
+}
+
+
+void push_wide_operand_l(u64 value)
+{
+    push_wide_operand((void*)&value);
+}
+
+
+void push_wide_operand_d(double value)
+{
+    push_wide_operand((void*)&value);
+}
+
+
+s64 load_wide_operand_l()
+{
+    s64 result;
+    s32* words = (s32*)&result;
+    words[1] = load_operand_i(0);
+    words[0] = load_operand_i(1);
+    return result;
+}
+
+
+double __load_wide_operand_d_impl(void* ptr)
+{
+    return *(double*)ptr;
+}
+
+
+double load_wide_operand_d()
+{
+    static_assert(sizeof(double) == sizeof(u64),
+                  "is this even remotely necessary?");
+
+    auto mem = load_wide_operand_l();
+    return __load_wide_operand_d_impl(&mem);
+}
+
+
 void pop_operand()
 {
     __operand_stack.pop_back();
@@ -124,8 +191,11 @@ struct Bytecode {
     enum : u8 {
         nop             = 0x00,
         pop             = 0x57,
+        pop2            = 0x58,
         swap            = 0x5f,
         ldc             = 0x12,
+        ldc_w           = 0x13,
+        ldc2_w          = 0x14,
         new_inst        = 0xbb,
         dup             = 0x59,
         // dup_x1        = 0x5a, // TODO
@@ -185,6 +255,8 @@ struct Bytecode {
         iinc            = 0x84,
         iastore         = 0x4f,
         iaload          = 0x2e,
+        lconst_0        = 0x09,
+        lconst_1        = 0x0a,
         if_acmpeq       = 0xa5,
         if_acmpne       = 0xa6,
         if_icmpeq       = 0x9f,
@@ -253,14 +325,14 @@ static std::vector<ClassTableEntry> class_table;
 
 Class* import(Slice classpath)
 {
-    puts("loading class from jar!");
+    if (jar_file_data == nullptr) {
+        puts("missing jar, import failed");
+        while (true) ;
+    }
 
     auto data = jar::load_classfile(jar_file_data, classpath);
     if (data.length_) {
-        puts("loaded classfile from jar!");
-
         if (auto clz = parse_classfile(classpath, data.ptr_)) {
-            puts("parsed classfile correctly!");
             return clz;
         }
     }
@@ -327,13 +399,6 @@ Class* load_class(Class* current_module, u16 class_index)
     }
 
     return import(cname);
-    // std::cout << "missing " << std::string(cname.ptr_, cname.length_) << std::endl;
-    // while( true);
-    // // Ok, if we haven't found the class yet, we should go ahead and dynamically
-    // // load it!
-    // // TODO: load class from jar
-
-    // return nullptr;
 }
 
 
@@ -450,6 +515,42 @@ Object* make_instance(Class* clz, u16 class_constant)
 
 
 
+void ldc1(Class* clz, u16 index)
+{
+    auto c = clz->constants_->load(index);
+    switch (c->tag_) {
+    case ClassFile::ConstantType::t_float: {
+        auto cfl = (ClassFile::ConstantFloat*)c;
+        float result;
+        auto input = cfl->value_.get();
+        memcpy(&result, &input, sizeof(float));
+        push_operand_f(result);
+        break;
+    }
+
+    case ClassFile::ConstantType::t_integer: {
+        auto cint = (ClassFile::ConstantInteger*)c;
+        push_operand_i(cint->value_.get());
+        break;
+    }
+
+    default:
+        puts("unhandled ldc...");
+        while (true) ;
+        break;
+    }
+}
+
+
+
+void ldc2(Class* clz, u16 index)
+{
+    puts("TODO: ldc2_w");
+    while (true) ;
+}
+
+
+
 void execute_bytecode(Class* clz, const u8* bytecode)
 {
     u32 pc = 0;
@@ -465,52 +566,46 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::pop2:
+            pop_operand();
+            pop_operand();
+            ++pc;
+            break;
+
         case Bytecode::swap: {
             auto one = load_operand(0);
             auto two = load_operand(1);
             pop_operand();
             pop_operand();
-            push_operand(one);
-            push_operand(two);
+            push_operand_p(one);
+            push_operand_p(two);
             ++pc;
             break;
         }
 
-        case Bytecode::ldc: {
-            auto c = clz->constants_->load(bytecode[pc + 1]);
-            switch (c->tag_) {
-            case ClassFile::ConstantType::t_float: {
-                auto cfl = (ClassFile::ConstantFloat*)c;
-                float result;
-                auto input = cfl->value_.get();
-                memcpy(&result, &input, sizeof(float));
-                push_operand(&result);
-                break;
-            }
-
-            case ClassFile::ConstantType::t_integer: {
-                auto cint = (ClassFile::ConstantInteger*)c;
-                push_operand((void*)(intptr_t)cint->value_.get());
-                break;
-            }
-
-            default:
-                puts("unhandled ldc...");
-                while (true) ;
-                break;
-            }
+        case Bytecode::ldc:
+            ldc1(clz, bytecode[pc + 1]);
             pc += 2;
             break;
-        }
+
+        case Bytecode::ldc_w:
+            ldc1(clz, ((network_u16*)&bytecode[pc + 1])->get());
+            pc += 3;
+            break;
+
+        case Bytecode::ldc2_w:
+            ldc2(clz, ((network_u16*)&bytecode[pc + 1])->get());
+            pc += 3;
+            break;
 
         case Bytecode::new_inst:
-            push_operand(make_instance(clz, ((network_u16*)&bytecode[pc + 1])->get()));
+            push_operand_a(*make_instance(clz, ((network_u16*)&bytecode[pc + 1])->get()));
             // printf("new %p\n", load_operand(0));
             pc += 3;
             break;
 
         case Bytecode::bipush:
-            push_operand((void*)(intptr_t)(s32)bytecode[pc + 1]);
+            push_operand_i((s32)bytecode[pc + 1]);
             pc += 2;
             break;
 
@@ -518,7 +613,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             auto array = Array::create(load_operand_i(0), sizeof(Object*));
             pop_operand();
             array->object_.class_ = &reference_array_class;
-            push_operand(array);
+            push_operand_a(*(Object*)array);
             pc += 3;
             break;
         }
@@ -553,7 +648,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             auto array = Array::create(element_count, element_size);
 
             array->object_.class_ = &primitive_array_class;
-            push_operand(array);
+            push_operand_a(*(Object*)array);
             pc += 2;
             break;
         }
@@ -561,7 +656,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::arraylength: {
             auto array = (Array*)load_operand(0);
             pop_operand();
-            push_operand((void*)(intptr_t)array->size_);
+            push_operand_i(array->size_);
             ++pc;
             break;
         }
@@ -580,7 +675,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             if (array->check_bounds(index)) {
                 Object* result;
                 memcpy(&result, array->address(index), sizeof result);
-                push_operand(result);
+                push_operand_a(*result);
             } else {
                 puts("array index out of bounds");
                 while (true) ;
@@ -614,7 +709,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         }
 
         case Bytecode::aconst_null:
-            push_operand((void*)nullptr);
+            push_operand_p((void*)nullptr);
             pc += 1;
             break;
 
@@ -658,64 +753,64 @@ void execute_bytecode(Class* clz, const u8* bytecode)
                 current = current->super_;
             }
 
-            push_operand((void*)(intptr_t)0);
+            push_operand_i(0);
             break;
 
             FOUND_INSTANCEOF:
-            push_operand((void*)(intptr_t)1);
+            push_operand_i(1);
             break;
         }
 
         case Bytecode::dup:
-            push_operand(load_operand(0));
+            push_operand_p(load_operand(0));
             ++pc;
             break;
 
         case Bytecode::dup2:
-            push_operand(load_operand(1));
-            push_operand(load_operand(1));
+            push_operand_p(load_operand(1));
+            push_operand_p(load_operand(1));
             ++pc;
             break;
 
         case Bytecode::iconst_m1:
-            push_operand((void*)-1);
+            push_operand_i(-1);
             ++pc;
             break;
 
         case Bytecode::iconst_0:
-            push_operand((void*)(s32)0);
+            push_operand_i(0);
             ++pc;
             break;
 
         case Bytecode::iconst_1:
-            push_operand((void*)(s32)1);
+            push_operand_i(1);
             ++pc;
             break;
 
         case Bytecode::iconst_2:
-            push_operand((void*)(s32)2);
+            push_operand_i(2);
             ++pc;
             break;
 
         case Bytecode::iconst_3:
-            push_operand((void*)(s32)3);
+            push_operand_i(3);
             ++pc;
             break;
 
         case Bytecode::iconst_4:
-            push_operand((void*)(s32)4);
+            push_operand_i(4);
             ++pc;
             break;
 
         case Bytecode::iconst_5:
-            push_operand((void*)(s32)5);
+            push_operand_i(5);
             ++pc;
             break;
 
         case Bytecode::getfield: {
             auto arg = (Object*)load_operand(0);
             pop_operand();
-            push_operand(arg->get_field(((network_u16*)&bytecode[pc + 1])->get()));
+            push_operand_p(arg->get_field(((network_u16*)&bytecode[pc + 1])->get()));
             // printf("%d\n", (int)(intptr_t)load_operand(0));
             pc += 3;
             break;
@@ -733,7 +828,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             const s32 result = load_operand_i(1) - load_operand_i(0);
             pop_operand();
             pop_operand();
-            push_operand((void*)(intptr_t)result);
+            push_operand_i(result);
             pc += 1;
             break;
         }
@@ -742,7 +837,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             const s32 result = load_operand_i(0) + load_operand_i(1);
             pop_operand();
             pop_operand();
-            push_operand((void*)(intptr_t)result);
+            push_operand_i(result);
             pc += 1;
             break;
         }
@@ -751,7 +846,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             const s32 result = load_operand_i(1) / load_operand_i(0);
             pop_operand();
             pop_operand();
-            push_operand((void*)(intptr_t)result);
+            push_operand_i(result);
             pc += 1;
             break;
         }
@@ -760,7 +855,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             const s32 result = load_operand_i(1) * load_operand_i(0);
             pop_operand();
             pop_operand();
-            push_operand((void*)(intptr_t)result);
+            push_operand_i(result);
             pc += 1;
             break;
         }
@@ -768,7 +863,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::ineg: {
             const s32 result = -load_operand_i(0);
             pop_operand();
-            push_operand((void*)(intptr_t)result);
+            push_operand_i(result);
             pc += 1;
             break;
         }
@@ -776,7 +871,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::i2c: {
             u8 val = load_operand_i(0);
             pop_operand();
-            push_operand((void*)(intptr_t)val);
+            push_operand_i(val);
             ++pc;
             break;
         }
@@ -784,7 +879,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::i2f: {
             float val = load_operand_i(0);
             pop_operand();
-            push_operand(&val);
+            push_operand_f(val);
             ++pc;
             break;
         }
@@ -792,7 +887,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::i2s: {
             short val = load_operand_i(0);
             pop_operand();
-            push_operand((void*)(intptr_t)val);
+            push_operand_i(val);
             ++pc;
             break;
         }
@@ -944,7 +1039,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
                           sizeof(void*) >= sizeof(float),
                           "undefined behavior");
             auto f = 0.f;
-            push_operand(&f);
+            push_operand_f(f);
             ++pc;
             break;
         }
@@ -954,7 +1049,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
                           sizeof(void*) >= sizeof(float),
                           "undefined behavior");
             auto f = 1.f;
-            push_operand(&f);
+            push_operand_f(f);
             ++pc;
             break;
         }
@@ -964,7 +1059,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
                           sizeof(void*) >= sizeof(float),
                           "undefined behavior");
             auto f = 2.f;
-            push_operand(&f);
+            push_operand_f(f);
             ++pc;
             break;
         }
@@ -975,7 +1070,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
             pop_operand();
             auto result = lhs + rhs;
-            push_operand(&result);
+            push_operand_f(result);
             ++pc;
             break;
         }
@@ -986,7 +1081,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
             pop_operand();
             auto result = lhs / rhs;
-            push_operand(&result);
+            push_operand_f(result);
             ++pc;
             break;
         }
@@ -997,7 +1092,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
             pop_operand();
             auto result = lhs * rhs;
-            push_operand(&result);
+            push_operand_f(result);
             ++pc;
             break;
         }
@@ -1011,16 +1106,16 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
 
             if (lhs > rhs) {
-                push_operand((void*)(intptr_t)1);
+                push_operand_i(1);
             } else if (lhs == rhs) {
-                push_operand((void*)(intptr_t)0);
+                push_operand_i(0);
             } else if (lhs < rhs) {
-                push_operand((void*)(intptr_t)-1);
+                push_operand_i(-1);
             } else {
                 if (bytecode[pc] == Bytecode::fcmpg) {
-                    push_operand((void*)(intptr_t)1);
+                    push_operand_i(1);
                 } else {
-                    push_operand((void*)(intptr_t)-1);
+                    push_operand_i(-1);
                 }
             }
             ++pc;
@@ -1041,7 +1136,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             if (array->check_bounds(index)) {
                 s16 result;
                 memcpy(&result, array->address(index), sizeof result);
-                push_operand((void*)(intptr_t)result);
+                push_operand_i(result);
             } else {
                 puts("array index out of bounds");
                 while (true) ;
@@ -1076,7 +1171,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
         case Bytecode::sipush: {
             s16 val = ((network_s16*)(bytecode + pc + 1))->get();
-            push_operand((void*)(intptr_t)val);
+            push_operand_i(val);
             pc += 3;
             break;
         }
@@ -1125,14 +1220,14 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::fload:
         case Bytecode::aload:
         case Bytecode::iload:
-            push_operand(load_local(bytecode[pc + 1]));
+            push_operand_p(load_local(bytecode[pc + 1]));
             pc += 2;
             break;
 
         case Bytecode::fload_0:
         case Bytecode::aload_0:
         case Bytecode::iload_0:
-            push_operand(load_local(0));
+            push_operand_p(load_local(0));
             // printf("load0 %p\n", load_local(0));
             ++pc;
             break;
@@ -1140,7 +1235,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::fload_1:
         case Bytecode::aload_1:
         case Bytecode::iload_1:
-            push_operand(load_local(1));
+            push_operand_p(load_local(1));
             // printf("load1 %p\n", load_local(1));
             ++pc;
             break;
@@ -1148,14 +1243,14 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::fload_2:
         case Bytecode::aload_2:
         case Bytecode::iload_2:
-            push_operand(load_local(2));
+            push_operand_p(load_local(2));
             ++pc;
             break;
 
         case Bytecode::fload_3:
         case Bytecode::aload_3:
         case Bytecode::iload_3:
-            push_operand(load_local(3));
+            push_operand_p(load_local(3));
             ++pc;
             break;
 
@@ -1195,7 +1290,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
             if (array->check_bounds(index)) {
                 u8 value = *array->address(index);
-                push_operand((void*)(intptr_t)value);
+                push_operand_i(value);
             } else {
                 puts("array index out of bounds");
                 while (true) ;
@@ -1243,11 +1338,25 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             if (array->check_bounds(index)) {
                 s32 result;
                 memcpy(&result, array->address(index), sizeof result);
-                push_operand((void*)(intptr_t)result);
+                push_operand_i(result);
             } else {
                 puts("array index out of bounds");
                 while (true) ;
             }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lconst_0: {
+            s64 value = 0;
+            push_wide_operand(&value);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lconst_1: {
+            s64 value = 1;
+            push_wide_operand(&value);
             ++pc;
             break;
         }
@@ -1314,7 +1423,9 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
 
 
-
+// FIXME: Ultimately, I intend for this code to run in embedded systems, so this
+// function should be removed, and all of the bootstrapped classes should be
+// inserted with incbin.
 const char* get_file_contents(const char* name)
 {
     char * buffer = 0;
@@ -1354,13 +1465,28 @@ void bootstrap()
 
 
 
-void start(const char* jar_file_bytes, Slice classpath)
+void start_from_jar(const char* jar_file_bytes, Slice classpath)
 {
     jar_file_data = jar_file_bytes;
 
     bootstrap();
 
     if (auto clz = java::jvm::import(classpath)) {
+        if (auto entry = clz->load_method("main")) {
+            java::jvm::invoke_method(clz, nullptr, entry);
+        }
+    } else {
+        puts("failed to import main class");
+    }
+}
+
+
+
+void start_from_classfile(const char* class_file_bytes, Slice classpath)
+{
+    bootstrap();
+
+    if (auto clz = parse_classfile(classpath, class_file_bytes)) {
         if (auto entry = clz->load_method("main")) {
             java::jvm::invoke_method(clz, nullptr, entry);
         }
@@ -1384,20 +1510,31 @@ void start(const char* jar_file_bytes, Slice classpath)
 ////////////////////////////////////////////////////////////////////////////////
 
 
+
 #include <string>
 #include <fstream>
 #include <streambuf>
 
+
 int main(int argc, char** argv)
 {
     if (argc != 3) {
-        puts("usage: java <jar> <classpath>");
+        puts("usage: java <jar|classfile> <classpath>");
         return 1;
     }
 
-    std::ifstream t(argv[1]);
+    std::string fname(argv[1]);
+
+    std::ifstream t(fname);
     std::string str((std::istreambuf_iterator<char>(t)),
                     std::istreambuf_iterator<char>());
 
-    java::jvm::start(str.c_str(), java::Slice::from_c_str(argv[2]));
+    const auto classpath = java::Slice::from_c_str(argv[2]);
+
+    if (fname.substr(fname.find_last_of(".") + 1) == "jar") {
+        java::jvm::start_from_jar(str.c_str(), classpath);
+    } else {
+        java::jvm::start_from_classfile(str.c_str(), classpath);
+    }
+
 }
