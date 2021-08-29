@@ -132,6 +132,8 @@ struct Bytecode {
         caload        = 0x34,
         newarray      = 0xbc,
         arraylength   = 0xbe,
+        aaload        = 0x32,
+        aastore       = 0x53,
         aload         = 0x19,
         aload_0       = 0x2a,
         aload_1       = 0x2b,
@@ -211,6 +213,9 @@ struct Bytecode {
         fcmpl         = 0x95,
         fcmpg         = 0x96,
         freturn       = 0xae,
+        saload        = 0x35,
+        sastore       = 0x56,
+        sipush        = 0x11,
         getfield      = 0xb4,
         putfield      = 0xb5,
         __goto        = 0xa7,
@@ -506,6 +511,53 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             auto array = (Array*)load_operand(0);
             pop_operand();
             push_operand((void*)(intptr_t)array->size_);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::aaload: {
+            auto array = (Array*)load_operand(1);
+            s32 index = load_operand_i(0);
+
+            static_assert(sizeof(s32) == sizeof(float),
+                          "This code assumes that both int "
+                          "and float are four bytes");
+
+            pop_operand();
+            pop_operand();
+
+            if (array->check_bounds(index)) {
+                Object* result;
+                memcpy(&result, array->address(index), sizeof result);
+                push_operand(result);
+            } else {
+                puts("array index out of bounds");
+                while (true) ;
+            }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::aastore: {
+            auto array = (Array*)load_operand(2);
+            auto value = (Object*)load_operand(0);
+            s32 index = load_operand_i(1);
+
+            static_assert(sizeof(s32) == sizeof(float),
+                          "This code assumes that both int "
+                          "and float are four bytes");
+
+            pop_operand();
+            pop_operand();
+            pop_operand();
+
+            if (array->check_bounds(index)) {
+                memcpy(array->address(index), &value, sizeof value);
+            } else {
+                // TODO: throw error
+                puts("array index out of bounds!");
+                while (true) ;
+            }
             ++pc;
             break;
         }
@@ -921,6 +973,60 @@ void execute_bytecode(Class* clz, const u8* bytecode)
                 }
             }
             ++pc;
+            break;
+        }
+
+        case Bytecode::saload: {
+            auto array = (Array*)load_operand(1);
+            s32 index = load_operand_i(0);
+
+            static_assert(sizeof(s32) == sizeof(float),
+                          "This code assumes that both int "
+                          "and float are four bytes");
+
+            pop_operand();
+            pop_operand();
+
+            if (array->check_bounds(index)) {
+                s16 result;
+                memcpy(&result, array->address(index), sizeof result);
+                push_operand((void*)(intptr_t)result);
+            } else {
+                puts("array index out of bounds");
+                while (true) ;
+            }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::sastore: {
+            auto array = (Array*)load_operand(2);
+            s16 value = load_operand_i(0);
+            s32 index = load_operand_i(1);
+
+            static_assert(sizeof(s32) == sizeof(float),
+                          "This code assumes that both int "
+                          "and float are four bytes");
+
+            pop_operand();
+            pop_operand();
+            pop_operand();
+
+            if (array->check_bounds(index)) {
+                memcpy(array->address(index), &value, sizeof value);
+            } else {
+                // TODO: throw error
+                puts("array index out of bounds!");
+                while (true) ;
+            }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::sipush: {
+            s16 val = ((network_s16*)(bytecode + pc + 1))->get();
+            push_operand((void*)(intptr_t)val);
+            pc += 3;
             break;
         }
 
