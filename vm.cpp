@@ -251,6 +251,24 @@ static std::vector<ClassTableEntry> class_table;
 
 
 
+Class* import(Slice classpath)
+{
+    puts("loading class from jar!");
+
+    auto data = jar::load_classfile(jar_file_data, classpath);
+    if (data.length_) {
+        puts("loaded classfile from jar!");
+
+        if (auto clz = parse_classfile(classpath, data.ptr_)) {
+            puts("parsed classfile correctly!");
+            return clz;
+        }
+    }
+    return nullptr;
+}
+
+
+
 void register_class(Slice name, Class* clz)
 {
     class_table.push_back({name, clz});
@@ -308,11 +326,14 @@ Class* load_class(Class* current_module, u16 class_index)
         }
     }
 
-    // Ok, if we haven't found the class yet, we should go ahead and dynamically
-    // load it!
-    // TODO: load class from jar
+    return import(cname);
+    // std::cout << "missing " << std::string(cname.ptr_, cname.length_) << std::endl;
+    // while( true);
+    // // Ok, if we haven't found the class yet, we should go ahead and dynamically
+    // // load it!
+    // // TODO: load class from jar
 
-    return nullptr;
+    // return nullptr;
 }
 
 
@@ -1293,13 +1314,38 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
 
 
+
+const char* get_file_contents(const char* name)
+{
+    char * buffer = 0;
+    long length;
+    FILE * f = fopen(name, "rb");
+
+    if (f) {
+        fseek (f, 0, SEEK_END);
+        length = ftell (f);
+        fseek (f, 0, SEEK_SET);
+        buffer = (char*)::malloc (length);
+        if (buffer) {
+            fread(buffer, 1, length, f);
+        }
+        fclose (f);
+    }
+
+    return buffer;
+}
+
+
+
 void bootstrap()
 {
     // NOTE: I manually edited the bytecode in the Object classfile, which is
     // why I do not provide the source code. It's hand-rolled java bytecode.
     if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
-                                         "Object.class")) {
+                                         get_file_contents("Object.class"))) {
         puts("successfully loaded Object root!");
+
+        obj_class->super_ = nullptr;
 
         primitive_array_class.super_ = obj_class;
         reference_array_class.super_ = obj_class;
@@ -1314,7 +1360,7 @@ void start(const char* jar_file_bytes)
 
     bootstrap();
 
-
+    // jar::load_classfile(jar_file_bytes, "HelloWorldApp");
 }
 
 
@@ -1332,25 +1378,45 @@ void start(const char* jar_file_bytes)
 ////////////////////////////////////////////////////////////////////////////////
 
 
+#include <string>
+#include <fstream>
+#include <streambuf>
 
 int main()
 {
+    std::ifstream t("TEST2.jar");
+    std::string str((std::istreambuf_iterator<char>(t)),
+                    std::istreambuf_iterator<char>());
+
+    java::jvm::jar_file_data = str.c_str();
+
+
     java::jvm::bootstrap();
 
-    if (java::parse_classfile(java::Slice::from_c_str("test/Example"),
-                              "Example.class")) {
-        puts("parsed base class");
-    }
+    // if (java::parse_classfile(java::Slice::from_c_str("test/Example"),
+    //                           java::jvm::get_file_contents("Example.class"))) {
+    //     puts("parsed base class");
+    // }
 
-    if (auto clz = java::parse_classfile(java::Slice::from_c_str("test/HelloWorldApp"),
-                                         "HelloWorldApp.class")) {
-        puts("parsed classfile header correctly");
+    java::jvm::import(java::Slice::from_c_str("test/Example"));
+
+    if (auto clz = java::jvm::import(java::Slice::from_c_str("test/HelloWorldApp"))) {
+        puts("import main class success!");
 
         if (auto entry = clz->load_method("main")) {
             java::jvm::invoke_method(clz, nullptr, entry);
         }
-
     } else {
-        puts("failed to parse class file");
+        puts("failed to import main class");
     }
+
+    // if (auto clz = java::parse_classfile(java::Slice::from_c_str("test/HelloWorldApp"),
+    //                                      java::jvm::get_file_contents("HelloWorldApp.class"))) {
+    //     puts("parsed classfile header correctly");
+
+
+
+    // } else {
+    //     puts("failed to parse class file");
+    // }
 }

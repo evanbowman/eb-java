@@ -165,7 +165,6 @@ const char* parse_classfile_fields(const char* str,
         }
     }
 
-    auto fields = (SubstitutionField*)jvm::malloc(sizeof(SubstitutionField) * nfields);
     clz->constants_->reserve_fields(nfields);
 
     {
@@ -179,8 +178,10 @@ const char* parse_classfile_fields(const char* str,
             auto hdr = (const ClassFile::ConstantHeader*)str;
             if (hdr->tag_ == ClassFile::t_field_ref) {
                 auto& ref = *(const ClassFile::ConstantRef*)hdr;
-                fields[i] = link_field(clz, ref);
-                clz->constants_->bind_field(i + 1, &fields[i]);
+
+                auto field = link_field(clz, ref);
+
+                clz->constants_->bind_field(i + 1, field);
 
                 if (auto other_clz = jvm::load_class(clz, ref.class_index_.get())) {
                     // If we're registering a field for the same class as we're
@@ -189,7 +190,8 @@ const char* parse_classfile_fields(const char* str,
                         if (clz->cpool_highest_field_ not_eq -1) {
                             auto prev = (SubstitutionField*)
                                 clz->constants_->load(clz->cpool_highest_field_);
-                            if (fields[i].offset_ > prev->offset_) {
+                            std::cout << i << std::endl;
+                            if (field.offset_ > prev->offset_) {
                                 clz->cpool_highest_field_ = i + 1;
                             }
                         } else {
@@ -225,136 +227,108 @@ const char* parse_classfile_fields(const char* str,
 
 
 
-Class* parse_classfile(Slice classname, const char* name)
+Class* parse_classfile(Slice classname, const char* str)
 {
-    if (auto str = get_file_contents(name)) {
-        auto h1 = reinterpret_cast<const ClassFile::HeaderSection1*>(str);
+    auto h1 = reinterpret_cast<const ClassFile::HeaderSection1*>(str);
 
-        if (h1->magic_.get() not_eq 0xcafebabe) {
-            return nullptr;
+    if (h1->magic_.get() not_eq 0xcafebabe) {
+        return nullptr;
+    }
+
+    auto clz = (Class*)jvm::malloc(sizeof(Class));
+
+    if (not clz) {
+        puts("failed to alloc constant class memory");
+        while (true) ; // TODO: raise error
+    }
+
+    new (clz)Class();
+
+    clz->classfile_data_ = str;
+
+    str += sizeof(ClassFile::HeaderSection1);
+
+
+    clz->constants_ = new ConstantPoolCompactImpl();
+    str = clz->constants_->parse(*h1);
+
+
+    auto h2 = reinterpret_cast<const ClassFile::HeaderSection2*>(str);
+    str += sizeof(ClassFile::HeaderSection2);
+
+    if (h2->interfaces_count_.get()) {
+        for (int i = 0; i < h2->interfaces_count_.get(); ++i) {
+            // Each interface is merely an index into the constant pool.
+            str += sizeof(u16);
+        }
+    }
+    jvm::register_class(classname, clz);
+
+
+    clz->super_ = jvm::load_class(clz, h2->super_class_.get());
+
+
+    str = parse_classfile_fields(str, clz, *h1);
+
+    auto h4 = reinterpret_cast<const ClassFile::HeaderSection4*>(str);
+    str += sizeof(ClassFile::HeaderSection4);
+
+
+    if (h4->methods_count_.get()) {
+
+        clz->methods_ =
+            (const ClassFile::MethodInfo**)
+            jvm::malloc(sizeof(ClassFile::MethodInfo*)
+                        * h4->methods_count_.get());
+
+        if (clz->methods_ == nullptr) {
+            puts("failed to alloc method table");
+            while (true) ; // TODO: raise error...
         }
 
-        auto clz = (Class*)jvm::malloc(sizeof(Class));
+        clz->method_count_ = h4->methods_count_.get();
 
-        if (not clz) {
-            puts("failed to alloc constant class memory");
-            while (true) ; // TODO: raise error
-        }
+        for (int i = 0; i < h4->methods_count_.get(); ++i) {
 
-        new (clz)Class();
+            auto method = (ClassFile::MethodInfo*)str;
+            str += sizeof(ClassFile::MethodInfo*);
 
-        clz->classfile_data_ = str;
+            clz->methods_[i] = method;
 
-        str += sizeof(ClassFile::HeaderSection1);
-
-
-        clz->constants_ = new ConstantPoolCompactImpl();
-        str = clz->constants_->parse(*h1);
-
-
-        auto h2 = reinterpret_cast<const ClassFile::HeaderSection2*>(str);
-        str += sizeof(ClassFile::HeaderSection2);
-
-        if (h2->interfaces_count_.get()) {
-            for (int i = 0; i < h2->interfaces_count_.get(); ++i) {
-                // Each interface is merely an index into the constant pool.
-                str += sizeof(u16);
-            }
-        }
-
-        clz->super_ = jvm::load_class(clz, h2->super_class_.get());
-
-
-        jvm::register_class(classname, clz);
-
-        str = parse_classfile_fields(str, clz, *h1);
-
-        auto h4 = reinterpret_cast<const ClassFile::HeaderSection4*>(str);
-        str += sizeof(ClassFile::HeaderSection4);
-
-        if (h4->methods_count_.get()) {
-
-            clz->methods_ =
-                (const ClassFile::MethodInfo**)
-                jvm::malloc(sizeof(ClassFile::MethodInfo*)
-                       * h4->methods_count_.get());
-
-            if (clz->methods_ == nullptr) {
-                puts("failed to alloc method table");
-                while (true) ; // TODO: raise error...
-            }
-
-            clz->method_count_ = h4->methods_count_.get();
-
-            for (int i = 0; i < h4->methods_count_.get(); ++i) {
-
-                auto method = (ClassFile::MethodInfo*)str;
-                str += sizeof(ClassFile::MethodInfo*);
-
-                clz->methods_[i] = method;
-
-                for (int i = 0; i < method->attributes_count_.get(); ++i) {
-                    auto attr = (ClassFile::AttributeInfo*)str;
-                    str +=
-                        sizeof(ClassFile::AttributeInfo) +
-                        attr->attribute_length_.get();
-                }
-            }
-        }
-
-        auto h5 = reinterpret_cast<const ClassFile::HeaderSection5*>(str);
-        str += sizeof(ClassFile::HeaderSection5);
-
-        if (h5->attributes_count_.get()) {
-            for (int i = 0; i < h5->attributes_count_.get(); ++i) {
+            for (int i = 0; i < method->attributes_count_.get(); ++i) {
                 auto attr = (ClassFile::AttributeInfo*)str;
                 str +=
                     sizeof(ClassFile::AttributeInfo) +
                     attr->attribute_length_.get();
-
-                auto attr_name =
-                    clz->constants_->load_string(attr->attribute_name_index_.get());
-
-                if (attr_name == Slice::from_c_str("SourceFile")) {
-                    // TODO...
-                } else {
-                    // TOOD...
-                }
             }
         }
-
-        return clz;
     }
 
-    return nullptr;
-}
 
+    auto h5 = reinterpret_cast<const ClassFile::HeaderSection5*>(str);
+    str += sizeof(ClassFile::HeaderSection5);
 
+    if (h5->attributes_count_.get()) {
+        for (int i = 0; i < h5->attributes_count_.get(); ++i) {
+            auto attr = (ClassFile::AttributeInfo*)str;
+            str +=
+                sizeof(ClassFile::AttributeInfo) +
+                attr->attribute_length_.get();
 
-}
+            auto attr_name =
+                clz->constants_->load_string(attr->attribute_name_index_.get());
 
-
-
-#include <stdio.h>
-#include <stdlib.h>
-
-
-const char* get_file_contents(const char* name)
-{
-    char * buffer = 0;
-    long length;
-    FILE * f = fopen(name, "rb");
-
-    if (f) {
-        fseek (f, 0, SEEK_END);
-        length = ftell (f);
-        fseek (f, 0, SEEK_SET);
-        buffer = (char*)malloc (length);
-        if (buffer) {
-            fread(buffer, 1, length, f);
+            if (attr_name == Slice::from_c_str("SourceFile")) {
+                // TODO...
+            } else {
+                // TOOD...
+            }
         }
-        fclose (f);
     }
 
-    return buffer;
+    return clz;
+}
+
+
+
 }

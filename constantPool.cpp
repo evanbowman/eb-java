@@ -40,6 +40,10 @@ void ConstantPoolCompactImpl::reserve_fields(int count)
 
     memset(bindings_, 0, sizeof(FieldBinding) * count);
 
+    for (int i = 0; i < count; ++i) {
+        bindings_[i].field_.size_ = SubstitutionField::Size::b_invalid;
+    }
+
     if (bindings_ == nullptr) {
         puts("malloc failed!");
         while (true) ;

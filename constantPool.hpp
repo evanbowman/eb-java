@@ -3,6 +3,7 @@
 #include "classfile.hpp"
 #include "slice.hpp"
 #include <stdio.h>
+#include "substitutionField.hpp"
 
 
 // NOTE: Creating a constant pool in memory for every class takes up a lot of
@@ -32,7 +33,7 @@ public:
     virtual void reserve_fields(int count) = 0;
 
 
-    virtual void bind_field(u16 index, void* data) = 0;
+    virtual void bind_field(u16 index, SubstitutionField field) = 0;
 
 
     Slice load_string(u16 index)
@@ -69,13 +70,14 @@ public:
 
     void reserve_fields(int) override
     {
-
+        while (true) ; // TODO
     }
 
 
-    void bind_field(u16 index, void* field)
+    void bind_field(u16 index, SubstitutionField field) override
     {
-        array_[index - 1] = (const ClassFile::ConstantHeader*)field;
+        while (true) ; // TODO
+        // array_[index - 1] = (const ClassFile::ConstantHeader*)field;
     }
 
 
@@ -96,8 +98,9 @@ public:
         index -= 1;
 
         for (int i = 0; i < binding_count_; ++i) {
-            if (bindings_[i].index_ == index and bindings_[i].field_) {
-                return (const ClassFile::ConstantHeader*)bindings_[i].field_;
+            if (bindings_[i].index_ == index and
+                bindings_[i].field_.size_ not_eq SubstitutionField::b_invalid) {
+                return (const ClassFile::ConstantHeader*)&bindings_[i].field_;
             }
         }
 
@@ -130,22 +133,17 @@ public:
 
     struct FieldBinding {
         u16 index_;
-        void* field_;
+        SubstitutionField field_;
     };
 
 
     void reserve_fields(int count) override;
 
 
-    void bind_field(u16 index, void* field) override
+    void bind_field(u16 index, SubstitutionField field) override
     {
-        if (field == nullptr) {
-            // Hmm... should never really happen...
-            return;
-        }
-
         for (int i = 0; ; ++i) {
-            if (bindings_[i].field_ == nullptr) {
+            if (bindings_[i].field_.size_ == SubstitutionField::Size::b_invalid) {
                 bindings_[i].index_ = index - 1;
                 bindings_[i].field_ = field;
                 return;
