@@ -3,15 +3,35 @@
 #include "endian.hpp"
 #include "object.hpp"
 #include <iostream>
-#include <map>
 #include <string.h>
 #include <vector>
+#include "array.hpp"
 
 
 
 namespace java {
 namespace jvm {
 
+
+
+static Class primitive_array_class {
+    nullptr, // constants
+    nullptr, // methods
+    nullptr, // super
+    nullptr, // classfile data
+    -1,      // cpool_highest_field
+    0,       // method count
+};
+
+
+static Class reference_array_class {
+    nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
+    -1,
+    0
+};
 
 
 std::vector<void*> __operand_stack;
@@ -104,6 +124,8 @@ struct Bytecode {
         // dup2_x1       = 0x5d, // TODO
         // dup2_x2       = 0x5e, // TODO
         bipush        = 0x10,
+        newarray      = 0xbc,
+        arraylength   = 0xbe,
         aload         = 0x19,
         aload_0       = 0x2a,
         aload_1       = 0x2b,
@@ -289,9 +311,13 @@ std::pair<const ClassFile::MethodInfo*, Class*> lookup_method(Class* clz,
 
 
 
-void dispatch_method(Class* clz, Object* self, u16 method_index)
+static void dispatch_method(Class* clz,
+                            Object* self,
+                            u16 method_index,
+                            bool direct_dispatch)
 {
-    auto ref = (const ClassFile::ConstantRef*)clz->constants_->load(method_index);
+    auto ref = (const ClassFile::ConstantRef*)
+        clz->constants_->load(method_index);
 
     Class* t_clz = load_class(clz, ref->class_index_.get());
     if (t_clz == nullptr) {
@@ -306,7 +332,11 @@ void dispatch_method(Class* clz, Object* self, u16 method_index)
     auto lhs_name = clz->constants_->load_string(nt->name_index_.get());
     auto lhs_type = clz->constants_->load_string(nt->descriptor_index_.get());
 
-    auto mtd = lookup_method(t_clz, lhs_name, lhs_type);
+    // direct_dispatch required for invoke_special, where we want to invoke a
+    // specific version of a function, rather than any overrides.
+    auto class_chain = self and not direct_dispatch ? self->class_ : t_clz;
+
+    auto mtd = lookup_method(class_chain, lhs_name, lhs_type);
     if (mtd.first) {
         invoke_method(mtd.second, self, mtd.first);
     } else {
@@ -325,7 +355,7 @@ void invoke_special(Class* clz, u16 method_index)
     auto self = (Object*)load_operand(0);
     pop_operand();
 
-    dispatch_method(clz, self, method_index);
+    dispatch_method(clz, self, method_index, true);
 }
 
 
@@ -426,6 +456,48 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             push_operand((void*)(intptr_t)(int)bytecode[pc + 1]);
             pc += 2;
             break;
+
+        case Bytecode::newarray: {
+            int element_size = 4;
+            switch (bytecode[pc + 1]) {
+            case 4:
+            case 5:
+            case 8:
+                element_size = 1;
+                break;
+
+            case 6:
+            case 10:
+                element_size = 4;
+                break;
+
+            case 9:
+                element_size = 2;
+                break;
+
+            case 7:
+            case 11:
+                element_size = 8;
+                break;
+            }
+
+            const int element_count = load_operand_i(0);
+            pop_operand();
+
+            auto array = Array::create(element_count, element_size);
+            array->object_.class_ = &primitive_array_class;
+            push_operand(array);
+            pc += 2;
+            break;
+        }
+
+        case Bytecode::arraylength: {
+            auto array = (Array*)load_operand(0);
+            pop_operand();
+            push_operand((void*)(intptr_t)array->size_);
+            ++pc;
+            break;
+        }
 
         case Bytecode::aconst_null:
             push_operand((void*)nullptr);
@@ -921,7 +993,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             dispatch_method(clz,
                             nullptr,
-                            ((network_u16*)(bytecode + pc))->get());
+                            ((network_u16*)(bytecode + pc))->get(), false);
             pc += 2;
             break;
 
@@ -931,7 +1003,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
             dispatch_method(clz,
                             obj,
-                            ((network_u16*)(bytecode + pc))->get());
+                            ((network_u16*)(bytecode + pc))->get(), false);
             pc += 2;
             break;
         }
@@ -958,9 +1030,12 @@ void bootstrap()
 {
     // NOTE: I manually edited the bytecode in the Object classfile, which is
     // why I do not provide the source code. It's hand-rolled java bytecode.
-    if (parse_classfile(Slice::from_c_str("java/lang/Object"),
-                        "Object.class")) {
+    if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
+                                         "Object.class")) {
         puts("successfully loaded Object root!");
+
+        primitive_array_class.super_ = obj_class;
+        reference_array_class.super_ = obj_class;
     }
 }
 

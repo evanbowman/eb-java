@@ -36,13 +36,13 @@ class HelloWorldApp extends Example {
             app.baz++;
             app.membr--;
 
-            if (app.foo > 20) {
+            if (app.bar < 10) {
                 Object result = app.fn();
                 if (result instanceof Object) {
                     ((HelloWorldApp)result).test(0);
                 }
             } else {
-                app.testfn();
+                app.membr = app.testfn().length;
             }
         }
     }
