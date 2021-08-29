@@ -34,6 +34,7 @@ class HelloWorldApp extends Example {
             app.foo++;
             app.bar++;
             app.baz++;
+            app.membr--;
 
             if (app.foo > 20) {
                 app.fn();

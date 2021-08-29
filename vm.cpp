@@ -440,11 +440,10 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
             pop_operand();
             pc += 3;
-            // while (true) ;
             break;
 
         case Bytecode::isub: {
-            const int result = load_operand_i(0) - load_operand_i(1);
+            const int result = load_operand_i(1) - load_operand_i(0);
             pop_operand();
             pop_operand();
             push_operand((void*)(intptr_t)result);
