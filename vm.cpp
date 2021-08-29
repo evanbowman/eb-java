@@ -94,9 +94,15 @@ struct Bytecode {
     enum : u8 {
         nop           = 0x00,
         pop           = 0x57,
+        swap          = 0x5f,
         ldc           = 0x12,
         new_inst      = 0xbb,
         dup           = 0x59,
+        // dup_x1        = 0x5a, // TODO
+        // dup_x2        = 0x5b, // TODO
+        dup2          = 0x5c,
+        // dup2_x1       = 0x5d, // TODO
+        // dup2_x2       = 0x5e, // TODO
         bipush        = 0x10,
         aload         = 0x19,
         aload_0       = 0x2a,
@@ -109,6 +115,10 @@ struct Bytecode {
         astore_2      = 0x4d,
         astore_3      = 0x4e,
         areturn       = 0xb0,
+        aconst_null   = 0x01,
+        checkcast     = 0xc0,
+        instanceof    = 0xc1,
+        iconst_m1     = 0x02,
         iconst_0      = 0x03,
         iconst_1      = 0x04,
         iconst_2      = 0x05,
@@ -128,6 +138,10 @@ struct Bytecode {
         iadd          = 0x60,
         isub          = 0x64,
         idiv          = 0x6c,
+        imul          = 0x68,
+        ineg          = 0x74,
+        i2f           = 0x86,
+        i2c           = 0x92,
         i2s           = 0x93,
         iinc          = 0x84,
         if_acmpeq     = 0xa5,
@@ -152,6 +166,17 @@ struct Bytecode {
         fadd          = 0x62,
         fdiv          = 0x6e,
         fmul          = 0x6a,
+        fload         = 0x17,
+        fload_0       = 0x22,
+        fload_1       = 0x23,
+        fload_2       = 0x24,
+        fload_3       = 0x25,
+        fstore        = 0x38,
+        fstore_0      = 0x43,
+        fstore_1      = 0x44,
+        fstore_2      = 0x45,
+        fstore_3      = 0x46,
+        freturn       = 0xae,
         getfield      = 0xb4,
         putfield      = 0xb5,
         __goto        = 0xa7,
@@ -353,6 +378,17 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::swap: {
+            auto one = load_operand(0);
+            auto two = load_operand(1);
+            pop_operand();
+            pop_operand();
+            push_operand(one);
+            push_operand(two);
+            ++pc;
+            break;
+        }
+
         case Bytecode::ldc: {
             auto c = clz->constants_->load(bytecode[pc + 1]);
             switch (c->tag_) {
@@ -362,6 +398,12 @@ void execute_bytecode(Class* clz, const u8* bytecode)
                 auto input = cfl->value_.get();
                 memcpy(&result, &input, sizeof(float));
                 push_operand(&result);
+                break;
+            }
+
+            case ClassFile::ConstantType::t_integer: {
+                auto cint = (ClassFile::ConstantInteger*)c;
+                push_operand((void*)(intptr_t)cint->value_.get());
                 break;
             }
 
@@ -380,18 +422,77 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pc += 3;
             break;
 
-        case Bytecode::areturn:
-            // NOTE: we implement return values on the stack. nothing to do here.
-            return;
-
         case Bytecode::bipush:
             push_operand((void*)(intptr_t)(int)bytecode[pc + 1]);
             pc += 2;
             break;
 
+        case Bytecode::aconst_null:
+            push_operand((void*)nullptr);
+            pc += 1;
+            break;
+
+        case Bytecode::checkcast: {
+            auto other =
+                load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
+            auto obj = (Object*)load_operand(0);
+            pop_operand();
+
+            auto current = obj->class_;
+            while (current) {
+                if (current == other) {
+                    goto CAST_SUCCESS;
+                }
+                current = current->super_;
+            }
+
+            // TODO: throw class cast exception!
+            puts("bad cast");
+            while (true) ;
+
+            CAST_SUCCESS:
+            pc += 3;
+            break;
+        }
+
+        case Bytecode::instanceof: {
+            auto other =
+                load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
+            auto obj = (Object*)load_operand(0);
+            pop_operand();
+            pc += 3;
+
+            auto current = obj->class_;
+            while (current) {
+                if (current == other) {
+                    goto FOUND_INSTANCEOF;
+                }
+                current = current->super_;
+            }
+
+            push_operand((void*)(intptr_t)0);
+            break;
+
+            FOUND_INSTANCEOF:
+            push_operand((void*)(intptr_t)1);
+            break;
+        }
+
+
+
         case Bytecode::dup:
-            // printf("dup %p\n", load_operand(0));
             push_operand(load_operand(0));
+            ++pc;
+            break;
+
+        case Bytecode::dup2:
+            push_operand(load_operand(1));
+            push_operand(load_operand(1));
+            ++pc;
+            break;
+
+        case Bytecode::iconst_m1:
+            push_operand((void*)-1);
             ++pc;
             break;
 
@@ -461,11 +562,44 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         }
 
         case Bytecode::idiv: {
-            const int result = load_operand_i(0) / load_operand_i(1);
+            const int result = load_operand_i(1) / load_operand_i(0);
             pop_operand();
             pop_operand();
             push_operand((void*)(intptr_t)result);
             pc += 1;
+            break;
+        }
+
+        case Bytecode::imul: {
+            const int result = load_operand_i(1) * load_operand_i(0);
+            pop_operand();
+            pop_operand();
+            push_operand((void*)(intptr_t)result);
+            pc += 1;
+            break;
+        }
+
+        case Bytecode::ineg: {
+            const int result = -load_operand_i(0);
+            pop_operand();
+            push_operand((void*)(intptr_t)result);
+            pc += 1;
+            break;
+        }
+
+        case Bytecode::i2c: {
+            u8 val = load_operand_i(0);
+            pop_operand();
+            push_operand((void*)(intptr_t)val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::i2f: {
+            float val = load_operand_i(0);
+            pop_operand();
+            push_operand(&val);
+            ++pc;
             break;
         }
 
@@ -661,8 +795,8 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         }
 
         case Bytecode::fdiv: {
-            float lhs = load_operand_f(0);
-            float rhs = load_operand_f(1);
+            float lhs = load_operand_f(1);
+            float rhs = load_operand_f(0);
             pop_operand();
             pop_operand();
             auto result = lhs / rhs;
@@ -682,6 +816,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
         }
 
+        case Bytecode::fstore:
         case Bytecode::astore:
         case Bytecode::istore:
             store_local(bytecode[pc + 1], load_operand(0));
@@ -689,6 +824,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pc += 2;
             break;
 
+        case Bytecode::fstore_0:
         case Bytecode::astore_0:
         case Bytecode::istore_0:
             store_local(0, load_operand(0));
@@ -696,6 +832,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::fstore_1:
         case Bytecode::astore_1:
         case Bytecode::istore_1:
             store_local(1, load_operand(0));
@@ -704,6 +841,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::fstore_2:
         case Bytecode::astore_2:
         case Bytecode::istore_2:
             store_local(2, load_operand(0));
@@ -711,6 +849,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::fstore_3:
         case Bytecode::astore_3:
         case Bytecode::istore_3:
             store_local(3, load_operand(0));
@@ -718,12 +857,14 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::fload:
         case Bytecode::aload:
         case Bytecode::iload:
             push_operand(load_local(bytecode[pc + 1]));
             pc += 2;
             break;
 
+        case Bytecode::fload_0:
         case Bytecode::aload_0:
         case Bytecode::iload_0:
             push_operand(load_local(0));
@@ -731,6 +872,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::fload_1:
         case Bytecode::aload_1:
         case Bytecode::iload_1:
             push_operand(load_local(1));
@@ -738,12 +880,14 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
+        case Bytecode::fload_2:
         case Bytecode::aload_2:
         case Bytecode::iload_2:
             push_operand(load_local(2));
             ++pc;
             break;
 
+        case Bytecode::fload_3:
         case Bytecode::aload_3:
         case Bytecode::iload_3:
             push_operand(load_local(3));
@@ -767,7 +911,10 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pc += ((network_s32*)(bytecode + pc + 1))->get();
             break;
 
+        case Bytecode::areturn:
+        case Bytecode::freturn:
         case Bytecode::vreturn:
+            // NOTE: we implement return values on the stack. nothing to do here.
             return;
 
         case Bytecode::invokestatic:

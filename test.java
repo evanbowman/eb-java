@@ -10,8 +10,8 @@ class HelloWorldApp extends Example {
     public char c = 'A';
 
 
-    public HelloWorldApp fn() {
-        return this;
+    public Object fn() {
+        return (Object)this;
     }
 
 
@@ -24,12 +24,12 @@ class HelloWorldApp extends Example {
         HelloWorldApp app = new HelloWorldApp();
 
         int i = 0;
-        int j = 1;
-        int k = 1;
-        int l = 1;
+        int j = 40000;
+        int k = 2;
+        int l = j / k;
+        float test = 8.f;
 
         while (true) {
-
             test(i++);
             app.foo++;
             app.bar++;
@@ -37,7 +37,10 @@ class HelloWorldApp extends Example {
             app.membr--;
 
             if (app.foo > 20) {
-                app.fn();
+                Object result = app.fn();
+                if (result instanceof Object) {
+                    ((HelloWorldApp)result).test(0);
+                }
             } else {
                 app.testfn();
             }

@@ -116,7 +116,7 @@ struct ClassFile {
 
     struct ConstantInteger {
         ConstantHeader header_;
-        network_u32 value_;
+        network_s32 value_;
     };
 
     struct ConstantFloat {
