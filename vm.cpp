@@ -224,6 +224,8 @@ struct Bytecode {
         invokevirtual = 0xb6,
         invokespecial = 0xb7,
         vreturn       = 0xb1,
+        // jsr           = 0xa8, unimplemented
+        // jsr_w         = 0xc9,
     };
 };
 
