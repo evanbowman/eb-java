@@ -17,13 +17,15 @@ namespace jvm {
 static Class primitive_array_class {
     nullptr, // constants
     nullptr, // methods
-    nullptr, // super
+    nullptr, // super (will be filled in with Object by the bootstrap code)
     nullptr, // classfile data
     -1,      // cpool_highest_field
     0,       // method count
 };
 
 
+// We make the distinction between primitive arrays and reference arrays,
+// because later on, we will need to track gc roots.
 static Class reference_array_class {
     nullptr,
     nullptr,
@@ -123,7 +125,11 @@ struct Bytecode {
         dup2          = 0x5c,
         // dup2_x1       = 0x5d, // TODO
         // dup2_x2       = 0x5e, // TODO
+        bastore       = 0x54,
+        baload        = 0x33,
         bipush        = 0x10,
+        castore       = 0x55,
+        caload        = 0x34,
         newarray      = 0xbc,
         arraylength   = 0xbe,
         aload         = 0x19,
@@ -166,6 +172,8 @@ struct Bytecode {
         i2c           = 0x92,
         i2s           = 0x93,
         iinc          = 0x84,
+        iastore       = 0x4f,
+        iaload        = 0x2e,
         if_acmpeq     = 0xa5,
         if_acmpne     = 0xa6,
         if_icmpeq     = 0x9f,
@@ -350,8 +358,6 @@ static void dispatch_method(Class* clz,
 
 void invoke_special(Class* clz, u16 method_index)
 {
-    puts("invoke_special");
-
     auto self = (Object*)load_operand(0);
     pop_operand();
 
@@ -485,6 +491,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
 
             auto array = Array::create(element_count, element_size);
+
             array->object_.class_ = &primitive_array_class;
             push_operand(array);
             pc += 2;
@@ -974,6 +981,80 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             // printf("%d\n", (int)(intptr_t)load_local(1));
             pc += 3;
             break;
+
+        case Bytecode::castore:
+        case Bytecode::bastore: {
+            auto array = (Array*)load_operand(2);
+            u8 value = load_operand_i(0);
+            int index = load_operand_i(1);
+
+            pop_operand();
+            pop_operand();
+            pop_operand();
+
+            if (array->check_bounds(index)) {
+                *array->address(index) = value;
+            } else {
+                puts("array index out of bounds");
+                while (true) ;
+            }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::caload:
+        case Bytecode::baload: {
+            auto array = (Array*)load_operand(1);
+            int index = load_operand_i(0);
+
+            if (array->check_bounds(index)) {
+                u8 value = *array->address(index);
+                push_operand((void*)(intptr_t)value);
+            } else {
+                puts("array index out of bounds");
+                while (true) ;
+            }
+            break;
+        }
+
+        case Bytecode::iastore: {
+            auto array = (Array*)load_operand(2);
+            int value = load_operand_i(0);
+            int index = load_operand_i(1);
+
+            pop_operand();
+            pop_operand();
+            pop_operand();
+
+            if (array->check_bounds(index)) {
+                memcpy(array->address(index), &value, sizeof value);
+            } else {
+                // TODO: throw error
+                puts("array index out of bounds!");
+                while (true) ;
+            }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::iaload: {
+            auto array = (Array*)load_operand(1);
+            int index = load_operand_i(0);
+
+            pop_operand();
+            pop_operand();
+
+            if (array->check_bounds(index)) {
+                int result;
+                memcpy(&result, array->address(index), sizeof result);
+                push_operand((void*)(intptr_t)result);
+            } else {
+                puts("array index out of bounds");
+                while (true) ;
+            }
+            ++pc;
+            break;
+        }
 
         case Bytecode::__goto:
             pc += ((network_s16*)(bytecode + pc + 1))->get();

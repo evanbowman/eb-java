@@ -42,7 +42,14 @@ class HelloWorldApp extends Example {
                     ((HelloWorldApp)result).test(0);
                 }
             } else {
-                app.membr = app.testfn().length;
+                int data[] = app.testfn();
+                app.membr = data.length;
+
+                data[0] = 1;
+
+                while (data[0] != 1) {
+
+                }
             }
         }
     }

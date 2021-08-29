@@ -25,16 +25,16 @@ struct Array {
     }
 
 
-    // template <typename T>
-    // T load(int index)
-    // {
-    //     if (index >= 0 and index < size_) {
-    //         u8* element = data() + index * element_size_;
-    //         T result;
-    //         memcpy(&result, element, sizeof(T));
-    //         return result;
-    //     }
-    // }
+    u8* address(int index)
+    {
+        return data() + index * element_size_;
+    }
+
+
+    bool check_bounds(int index)
+    {
+        return index >= 0 and index < size_;
+    }
 };
 
 
