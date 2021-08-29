@@ -29,6 +29,12 @@ class HelloWorldApp extends Example {
         int l = j / k;
         float test = 8.f;
 
+        float[] t2 = new float[3];
+        t2[1] = 55.f;
+        if (t2[1] == 55.f) {
+            t2[1] = 65.f;
+        }
+
         while (true) {
             test(i++);
             app.foo++;

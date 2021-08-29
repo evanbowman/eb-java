@@ -14,7 +14,7 @@ namespace java {
 
 
 // A quite complicated function call. It looks up a class, and determines the
-// byte offset of a field within that class.
+// byte offset of a field within an instance of that class.
 //
 // FIXME: this code does not look at access permissions on field access, we
 // could potentially have a shadowing bug, if there are private/public vars with

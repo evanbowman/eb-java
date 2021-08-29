@@ -28,7 +28,9 @@ struct SubstitutionField {
     };
 
     Size size_ : 2;
-    u16 offset_ : 14;
+    u16 offset_ : 14; // Ok, so we lose two bits of precision, which technically
+                      // isn't compliant with the java standard. But who puts
+                      // 65535 fields in a class anyway?
 };
 
 

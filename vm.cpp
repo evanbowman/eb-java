@@ -99,9 +99,9 @@ float load_operand_f(int offset)
 }
 
 
-int load_operand_i(int offset)
+s32 load_operand_i(int offset)
 {
-    return (int)(intptr_t)load_operand(offset);
+    return (s32)(intptr_t)load_operand(offset);
 }
 
 
@@ -206,6 +206,10 @@ struct Bytecode {
         fstore_1      = 0x44,
         fstore_2      = 0x45,
         fstore_3      = 0x46,
+        faload        = 0x30,
+        fastore       = 0x51,
+        fcmpl         = 0x95,
+        fcmpg         = 0x96,
         freturn       = 0xae,
         getfield      = 0xb4,
         putfield      = 0xb5,
@@ -459,7 +463,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
 
         case Bytecode::bipush:
-            push_operand((void*)(intptr_t)(int)bytecode[pc + 1]);
+            push_operand((void*)(intptr_t)(s32)bytecode[pc + 1]);
             pc += 2;
             break;
 
@@ -576,32 +580,32 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
 
         case Bytecode::iconst_0:
-            push_operand((void*)(int)0);
+            push_operand((void*)(s32)0);
             ++pc;
             break;
 
         case Bytecode::iconst_1:
-            push_operand((void*)(int)1);
+            push_operand((void*)(s32)1);
             ++pc;
             break;
 
         case Bytecode::iconst_2:
-            push_operand((void*)(int)2);
+            push_operand((void*)(s32)2);
             ++pc;
             break;
 
         case Bytecode::iconst_3:
-            push_operand((void*)(int)3);
+            push_operand((void*)(s32)3);
             ++pc;
             break;
 
         case Bytecode::iconst_4:
-            push_operand((void*)(int)4);
+            push_operand((void*)(s32)4);
             ++pc;
             break;
 
         case Bytecode::iconst_5:
-            push_operand((void*)(int)5);
+            push_operand((void*)(s32)5);
             ++pc;
             break;
 
@@ -623,7 +627,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
 
         case Bytecode::isub: {
-            const int result = load_operand_i(1) - load_operand_i(0);
+            const s32 result = load_operand_i(1) - load_operand_i(0);
             pop_operand();
             pop_operand();
             push_operand((void*)(intptr_t)result);
@@ -632,7 +636,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         }
 
         case Bytecode::iadd: {
-            const int result = load_operand_i(0) + load_operand_i(1);
+            const s32 result = load_operand_i(0) + load_operand_i(1);
             pop_operand();
             pop_operand();
             push_operand((void*)(intptr_t)result);
@@ -641,7 +645,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         }
 
         case Bytecode::idiv: {
-            const int result = load_operand_i(1) / load_operand_i(0);
+            const s32 result = load_operand_i(1) / load_operand_i(0);
             pop_operand();
             pop_operand();
             push_operand((void*)(intptr_t)result);
@@ -650,7 +654,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         }
 
         case Bytecode::imul: {
-            const int result = load_operand_i(1) * load_operand_i(0);
+            const s32 result = load_operand_i(1) * load_operand_i(0);
             pop_operand();
             pop_operand();
             push_operand((void*)(intptr_t)result);
@@ -659,7 +663,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         }
 
         case Bytecode::ineg: {
-            const int result = -load_operand_i(0);
+            const s32 result = -load_operand_i(0);
             pop_operand();
             push_operand((void*)(intptr_t)result);
             pc += 1;
@@ -833,7 +837,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
 
         case Bytecode::fconst_0: {
-            static_assert(sizeof(float) == sizeof(int) and
+            static_assert(sizeof(float) == sizeof(s32) and
                           sizeof(void*) >= sizeof(float),
                           "undefined behavior");
             auto f = 0.f;
@@ -843,7 +847,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         }
 
         case Bytecode::fconst_1: {
-            static_assert(sizeof(float) == sizeof(int) and
+            static_assert(sizeof(float) == sizeof(s32) and
                           sizeof(void*) >= sizeof(float),
                           "undefined behavior");
             auto f = 1.f;
@@ -853,7 +857,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         }
 
         case Bytecode::fconst_2: {
-            static_assert(sizeof(float) == sizeof(int) and
+            static_assert(sizeof(float) == sizeof(s32) and
                           sizeof(void*) >= sizeof(float),
                           "undefined behavior");
             auto f = 2.f;
@@ -891,6 +895,31 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
             auto result = lhs * rhs;
             push_operand(&result);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::fcmpg:
+        case Bytecode::fcmpl: {
+            auto rhs = load_operand_f(0);
+            auto lhs = load_operand_f(1);
+
+            pop_operand();
+            pop_operand();
+
+            if (lhs > rhs) {
+                push_operand((void*)(intptr_t)1);
+            } else if (lhs == rhs) {
+                push_operand((void*)(intptr_t)0);
+            } else if (lhs < rhs) {
+                push_operand((void*)(intptr_t)-1);
+            } else {
+                if (bytecode[pc] == Bytecode::fcmpg) {
+                    push_operand((void*)(intptr_t)1);
+                } else {
+                    push_operand((void*)(intptr_t)-1);
+                }
+            }
             ++pc;
             break;
         }
@@ -986,7 +1015,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::bastore: {
             auto array = (Array*)load_operand(2);
             u8 value = load_operand_i(0);
-            int index = load_operand_i(1);
+            s32 index = load_operand_i(1);
 
             pop_operand();
             pop_operand();
@@ -1005,7 +1034,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::caload:
         case Bytecode::baload: {
             auto array = (Array*)load_operand(1);
-            int index = load_operand_i(0);
+            s32 index = load_operand_i(0);
 
             if (array->check_bounds(index)) {
                 u8 value = *array->address(index);
@@ -1017,10 +1046,15 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
         }
 
+        case Bytecode::fastore:
         case Bytecode::iastore: {
             auto array = (Array*)load_operand(2);
-            int value = load_operand_i(0);
-            int index = load_operand_i(1);
+            s32 value = load_operand_i(0);
+            s32 index = load_operand_i(1);
+
+            static_assert(sizeof(s32) == sizeof(float),
+                          "This code assumes that both int "
+                          "and float are four bytes");
 
             pop_operand();
             pop_operand();
@@ -1037,15 +1071,20 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
         }
 
+        case Bytecode::faload:
         case Bytecode::iaload: {
             auto array = (Array*)load_operand(1);
-            int index = load_operand_i(0);
+            s32 index = load_operand_i(0);
+
+            static_assert(sizeof(s32) == sizeof(float),
+                          "This code assumes that both int "
+                          "and float are four bytes");
 
             pop_operand();
             pop_operand();
 
             if (array->check_bounds(index)) {
-                int result;
+                s32 result;
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand((void*)(intptr_t)result);
             } else {
