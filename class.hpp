@@ -49,6 +49,8 @@ struct Class {
     u16 method_count_ = 0;
 
 
+    const ClassFile::HeaderSection2* interfaces() const;
+
 
     const ClassFile::MethodInfo* load_method(const char* name);
 

@@ -82,12 +82,14 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
             // with the interfaces...
 
             auto h2 = (ClassFile::HeaderSection2*)classfile;
-            if (h2->interfaces_count_.get()) {
-                puts("TODO: implement interfaces");
-                while (true) ;
-            }
-
             classfile += sizeof(ClassFile::HeaderSection2);
+
+            if (h2->interfaces_count_.get()) {
+                for (int i = 0; i < h2->interfaces_count_.get(); ++i) {
+                    // Each interface is merely an index into the constant pool.
+                    classfile += sizeof(u16);
+                }
+            }
 
             auto h3 = (ClassFile::HeaderSection3*)classfile;
             classfile += sizeof(ClassFile::HeaderSection3);
@@ -253,14 +255,15 @@ Class* parse_classfile(Slice classname, const char* name)
         auto h2 = reinterpret_cast<const ClassFile::HeaderSection2*>(str);
         str += sizeof(ClassFile::HeaderSection2);
 
+        if (h2->interfaces_count_.get()) {
+            for (int i = 0; i < h2->interfaces_count_.get(); ++i) {
+                // Each interface is merely an index into the constant pool.
+                str += sizeof(u16);
+            }
+        }
 
         clz->super_ = jvm::load_class(clz, h2->super_class_.get());
 
-
-        if (h2->interfaces_count_.get()) {
-            puts("TODO: load interfaces from classfile!");
-            while (true) ;
-        }
 
         jvm::register_class(classname, clz);
 
@@ -284,6 +287,7 @@ Class* parse_classfile(Slice classname, const char* name)
             clz->method_count_ = h4->methods_count_.get();
 
             for (int i = 0; i < h4->methods_count_.get(); ++i) {
+
                 auto method = (ClassFile::MethodInfo*)str;
                 str += sizeof(ClassFile::MethodInfo*);
 
@@ -297,7 +301,6 @@ Class* parse_classfile(Slice classname, const char* name)
                 }
             }
         }
-
 
         auto h5 = reinterpret_cast<const ClassFile::HeaderSection5*>(str);
         str += sizeof(ClassFile::HeaderSection5);

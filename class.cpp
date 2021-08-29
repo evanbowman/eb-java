@@ -8,6 +8,23 @@ namespace java {
 
 
 
+const ClassFile::HeaderSection2* Class::interfaces() const
+{
+    auto str = classfile_data_;
+    auto h1 = (const ClassFile::HeaderSection1*)classfile_data_;
+    str += sizeof(ClassFile::HeaderSection1);
+
+    for (int i = 0; i < h1->constant_count_.get() - 1; ++i) {
+        str +=
+            ClassFile::constant_size((const ClassFile::ConstantHeader*)
+                                     str);
+    }
+
+    return (ClassFile::HeaderSection2*)str;
+}
+
+
+
 const ClassFile::MethodInfo* Class::load_method(const char* name)
 {
     auto name_slc = Slice::from_c_str(name);

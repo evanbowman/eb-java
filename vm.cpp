@@ -36,6 +36,8 @@ static Class reference_array_class {
 };
 
 
+// TODO: maintain a secondary bitvector, where we can keep track of whether an
+// operand stack element is primitive or instance.
 std::vector<void*> __operand_stack;
 std::vector<void*> __locals;
 
@@ -114,116 +116,118 @@ void pop_operand()
 
 struct Bytecode {
     enum : u8 {
-        nop           = 0x00,
-        pop           = 0x57,
-        swap          = 0x5f,
-        ldc           = 0x12,
-        new_inst      = 0xbb,
-        dup           = 0x59,
+        nop             = 0x00,
+        pop             = 0x57,
+        swap            = 0x5f,
+        ldc             = 0x12,
+        new_inst        = 0xbb,
+        dup             = 0x59,
         // dup_x1        = 0x5a, // TODO
         // dup_x2        = 0x5b, // TODO
-        dup2          = 0x5c,
+        dup2            = 0x5c,
         // dup2_x1       = 0x5d, // TODO
         // dup2_x2       = 0x5e, // TODO
-        bastore       = 0x54,
-        baload        = 0x33,
-        bipush        = 0x10,
-        castore       = 0x55,
-        caload        = 0x34,
-        newarray      = 0xbc,
-        arraylength   = 0xbe,
-        aaload        = 0x32,
-        aastore       = 0x53,
-        aload         = 0x19,
-        aload_0       = 0x2a,
-        aload_1       = 0x2b,
-        aload_2       = 0x2c,
-        aload_3       = 0x2d,
-        astore        = 0x3a,
-        astore_0      = 0x4b,
-        astore_1      = 0x4c,
-        astore_2      = 0x4d,
-        astore_3      = 0x4e,
-        areturn       = 0xb0,
-        aconst_null   = 0x01,
-        checkcast     = 0xc0,
-        instanceof    = 0xc1,
-        iconst_m1     = 0x02,
-        iconst_0      = 0x03,
-        iconst_1      = 0x04,
-        iconst_2      = 0x05,
-        iconst_3      = 0x06,
-        iconst_4      = 0x07,
-        iconst_5      = 0x08,
-        istore        = 0x36,
-        istore_0      = 0x3b,
-        istore_1      = 0x3c,
-        istore_2      = 0x3d,
-        istore_3      = 0x3e,
-        iload         = 0x15,
-        iload_0       = 0x1a,
-        iload_1       = 0x1b,
-        iload_2       = 0x1c,
-        iload_3       = 0x1d,
-        iadd          = 0x60,
-        isub          = 0x64,
-        idiv          = 0x6c,
-        imul          = 0x68,
-        ineg          = 0x74,
-        i2f           = 0x86,
-        i2c           = 0x92,
-        i2s           = 0x93,
-        iinc          = 0x84,
-        iastore       = 0x4f,
-        iaload        = 0x2e,
-        if_acmpeq     = 0xa5,
-        if_acmpne     = 0xa6,
-        if_icmpeq     = 0x9f,
-        if_icmpne     = 0xa0,
-        if_icmplt     = 0xa1,
-        if_icmpge     = 0xa2,
-        if_icmpgt     = 0xa3,
-        if_icmple     = 0xa4,
-        if_eq         = 0x99,
-        if_ne         = 0x9a,
-        if_lt         = 0x9b,
-        if_ge         = 0x9c,
-        if_gt         = 0x9d,
-        if_le         = 0x9e,
-        if_nonnull    = 0xc7,
-        if_null       = 0xc6,
-        fconst_0      = 0x0b,
-        fconst_1      = 0x0c,
-        fconst_2      = 0x0d,
-        fadd          = 0x62,
-        fdiv          = 0x6e,
-        fmul          = 0x6a,
-        fload         = 0x17,
-        fload_0       = 0x22,
-        fload_1       = 0x23,
-        fload_2       = 0x24,
-        fload_3       = 0x25,
-        fstore        = 0x38,
-        fstore_0      = 0x43,
-        fstore_1      = 0x44,
-        fstore_2      = 0x45,
-        fstore_3      = 0x46,
-        faload        = 0x30,
-        fastore       = 0x51,
-        fcmpl         = 0x95,
-        fcmpg         = 0x96,
-        freturn       = 0xae,
-        saload        = 0x35,
-        sastore       = 0x56,
-        sipush        = 0x11,
-        getfield      = 0xb4,
-        putfield      = 0xb5,
-        __goto        = 0xa7,
-        __goto_w      = 0xc8,
-        invokestatic  = 0xb8,
-        invokevirtual = 0xb6,
-        invokespecial = 0xb7,
-        vreturn       = 0xb1,
+        bastore         = 0x54,
+        baload          = 0x33,
+        bipush          = 0x10,
+        castore         = 0x55,
+        caload          = 0x34,
+        newarray        = 0xbc,
+        arraylength     = 0xbe,
+        aaload          = 0x32,
+        aastore         = 0x53,
+        aload           = 0x19,
+        aload_0         = 0x2a,
+        aload_1         = 0x2b,
+        aload_2         = 0x2c,
+        aload_3         = 0x2d,
+        astore          = 0x3a,
+        astore_0        = 0x4b,
+        astore_1        = 0x4c,
+        astore_2        = 0x4d,
+        astore_3        = 0x4e,
+        anewarray       = 0xbd,
+        areturn         = 0xb0,
+        aconst_null     = 0x01,
+        checkcast       = 0xc0,
+        instanceof      = 0xc1,
+        iconst_m1       = 0x02,
+        iconst_0        = 0x03,
+        iconst_1        = 0x04,
+        iconst_2        = 0x05,
+        iconst_3        = 0x06,
+        iconst_4        = 0x07,
+        iconst_5        = 0x08,
+        istore          = 0x36,
+        istore_0        = 0x3b,
+        istore_1        = 0x3c,
+        istore_2        = 0x3d,
+        istore_3        = 0x3e,
+        iload           = 0x15,
+        iload_0         = 0x1a,
+        iload_1         = 0x1b,
+        iload_2         = 0x1c,
+        iload_3         = 0x1d,
+        iadd            = 0x60,
+        isub            = 0x64,
+        idiv            = 0x6c,
+        imul            = 0x68,
+        ineg            = 0x74,
+        i2f             = 0x86,
+        i2c             = 0x92,
+        i2s             = 0x93,
+        iinc            = 0x84,
+        iastore         = 0x4f,
+        iaload          = 0x2e,
+        if_acmpeq       = 0xa5,
+        if_acmpne       = 0xa6,
+        if_icmpeq       = 0x9f,
+        if_icmpne       = 0xa0,
+        if_icmplt       = 0xa1,
+        if_icmpge       = 0xa2,
+        if_icmpgt       = 0xa3,
+        if_icmple       = 0xa4,
+        if_eq           = 0x99,
+        if_ne           = 0x9a,
+        if_lt           = 0x9b,
+        if_ge           = 0x9c,
+        if_gt           = 0x9d,
+        if_le           = 0x9e,
+        if_nonnull      = 0xc7,
+        if_null         = 0xc6,
+        fconst_0        = 0x0b,
+        fconst_1        = 0x0c,
+        fconst_2        = 0x0d,
+        fadd            = 0x62,
+        fdiv            = 0x6e,
+        fmul            = 0x6a,
+        fload           = 0x17,
+        fload_0         = 0x22,
+        fload_1         = 0x23,
+        fload_2         = 0x24,
+        fload_3         = 0x25,
+        fstore          = 0x38,
+        fstore_0        = 0x43,
+        fstore_1        = 0x44,
+        fstore_2        = 0x45,
+        fstore_3        = 0x46,
+        faload          = 0x30,
+        fastore         = 0x51,
+        fcmpl           = 0x95,
+        fcmpg           = 0x96,
+        freturn         = 0xae,
+        saload          = 0x35,
+        sastore         = 0x56,
+        sipush          = 0x11,
+        getfield        = 0xb4,
+        putfield        = 0xb5,
+        __goto          = 0xa7,
+        __goto_w        = 0xc8,
+        invokestatic    = 0xb8,
+        invokevirtual   = 0xb6,
+        invokespecial   = 0xb7,
+        invokeinterface = 0xb9,
+        vreturn         = 0xb1,
         // jsr           = 0xa8, unimplemented
         // jsr_w         = 0xc9,
     };
@@ -338,24 +342,29 @@ static void dispatch_method(Class* clz,
     auto ref = (const ClassFile::ConstantRef*)
         clz->constants_->load(method_index);
 
-    Class* t_clz = load_class(clz, ref->class_index_.get());
-    if (t_clz == nullptr) {
-        printf("failed to load class %d, TODO: raise error...\n",
-               ref->class_index_.get());
-        while (true) ;
-    }
-
     auto nt = (const ClassFile::ConstantNameAndType*)
         clz->constants_->load(ref->name_and_type_index_.get());
 
     auto lhs_name = clz->constants_->load_string(nt->name_index_.get());
     auto lhs_type = clz->constants_->load_string(nt->descriptor_index_.get());
 
-    // direct_dispatch required for invoke_special, where we want to invoke a
-    // specific version of a function, rather than any overrides.
-    auto class_chain = self and not direct_dispatch ? self->class_ : t_clz;
+    auto mtd = [&] {
+        if (self and not direct_dispatch) {
+            return lookup_method(self->class_, lhs_name, lhs_type);
+        } else {
+            // If we do not have a self pointer we're looking up a static
+            // method, if direct_dispatch, we're processing an invoke_special
+            // instruction.
+            Class* t_clz = load_class(clz, ref->class_index_.get());
+            if (t_clz == nullptr) {
+                printf("failed to load class %d, TODO: raise error...\n",
+                       ref->class_index_.get());
+                while (true) ;
+            }
+            return lookup_method(t_clz, lhs_name, lhs_type);
+        }
+    }();
 
-    auto mtd = lookup_method(class_chain, lhs_name, lhs_type);
     if (mtd.first) {
         invoke_method(mtd.second, self, mtd.first);
     } else {
@@ -474,6 +483,15 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pc += 2;
             break;
 
+        case Bytecode::anewarray: {
+            auto array = Array::create(load_operand_i(0), sizeof(Object*));
+            pop_operand();
+            array->object_.class_ = &reference_array_class;
+            push_operand(array);
+            pc += 3;
+            break;
+        }
+
         case Bytecode::newarray: {
             int element_size = 4;
             switch (bytecode[pc + 1]) {
@@ -577,6 +595,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
             auto current = obj->class_;
             while (current) {
+                // FIXME: check for successful cast to implemented interfaces
                 if (current == other) {
                     goto CAST_SUCCESS;
                 }
@@ -601,6 +620,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
             auto current = obj->class_;
             while (current) {
+                // FIXME: check for successful cast to implemented interfaces
                 if (current == other) {
                     goto FOUND_INSTANCEOF;
                 }
@@ -614,8 +634,6 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             push_operand((void*)(intptr_t)1);
             break;
         }
-
-
 
         case Bytecode::dup:
             push_operand(load_operand(0));
@@ -1233,6 +1251,17 @@ void execute_bytecode(Class* clz, const u8* bytecode)
                             obj,
                             ((network_u16*)(bytecode + pc))->get(), false);
             pc += 2;
+            break;
+        }
+
+        case Bytecode::invokeinterface: {
+            ++pc;
+            auto obj = (Object*)load_operand(0);
+            pop_operand();
+            dispatch_method(clz,
+                            obj,
+                            ((network_u16*)(bytecode + pc))->get(), false);
+            pc += 4;
             break;
         }
 

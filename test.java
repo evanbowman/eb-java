@@ -35,6 +35,8 @@ class HelloWorldApp extends Example {
             t2[1] = 65.f;
         }
 
+        Object[] test2 = new Object[10];
+
         while (true) {
             test(i++);
             app.foo++;
