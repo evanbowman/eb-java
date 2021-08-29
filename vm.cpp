@@ -1354,13 +1354,19 @@ void bootstrap()
 
 
 
-void start(const char* jar_file_bytes)
+void start(const char* jar_file_bytes, Slice classpath)
 {
     jar_file_data = jar_file_bytes;
 
     bootstrap();
 
-    // jar::load_classfile(jar_file_bytes, "HelloWorldApp");
+    if (auto clz = java::jvm::import(classpath)) {
+        if (auto entry = clz->load_method("main")) {
+            java::jvm::invoke_method(clz, nullptr, entry);
+        }
+    } else {
+        puts("failed to import main class");
+    }
 }
 
 
@@ -1384,7 +1390,8 @@ void start(const char* jar_file_bytes)
 
 int main(int argc, char** argv)
 {
-    if (argc != 2) {
+    if (argc != 3) {
+        puts("usage: java <jar> <classpath>");
         return 1;
     }
 
@@ -1392,28 +1399,5 @@ int main(int argc, char** argv)
     std::string str((std::istreambuf_iterator<char>(t)),
                     std::istreambuf_iterator<char>());
 
-    java::jvm::jar_file_data = str.c_str();
-
-
-    java::jvm::bootstrap();
-
-    if (auto clz = java::jvm::import(java::Slice::from_c_str("test/HelloWorldApp"))) {
-        puts("import main class success!");
-
-        if (auto entry = clz->load_method("main")) {
-            java::jvm::invoke_method(clz, nullptr, entry);
-        }
-    } else {
-        puts("failed to import main class");
-    }
-
-    // if (auto clz = java::parse_classfile(java::Slice::from_c_str("test/HelloWorldApp"),
-    //                                      java::jvm::get_file_contents("HelloWorldApp.class"))) {
-    //     puts("parsed classfile header correctly");
-
-
-
-    // } else {
-    //     puts("failed to parse class file");
-    // }
+    java::jvm::start(str.c_str(), java::Slice::from_c_str(argv[2]));
 }
