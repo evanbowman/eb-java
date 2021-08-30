@@ -132,9 +132,6 @@ public:
         for (int i = 0; i < src.constant_count_.get() - 1; ++i) {
             auto c = (const ClassFile::ConstantHeader*)str;
 
-            std::cout << "parse constant " << i + 1 << " when building cpool, type "
-                      << (int)*str << std::endl;
-
             str += ClassFile::constant_size(c);
 
             if (c->tag_ == ClassFile::t_double or

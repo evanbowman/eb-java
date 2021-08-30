@@ -3,17 +3,31 @@
 for dir in ./*/
 do
     dir=${dir%*/}
+
+    echo Entering dir $dir...
+
     cd $dir
     echo building jar for $dir
-    mvn clean install -DskipTests
+    echo Building test jar...
+    mvn clean install -DskipTests > /dev/null
 
-    unzip target/test-1.0-SNAPSHOT.jar -d ./tmp/
+    echo Unpacking test jar...
+    unzip target/test-1.0-SNAPSHOT.jar -d ./tmp/ > /dev/null
     cd ./tmp/
-    zip -0 -r fixup.jar ./*
+    echo Repacking test jar without compression...
+    zip -0 -r fixup.jar ./* > /dev/null
     cp fixup.jar ../
     cd ..
 
+    rm -r ./tmp/
+
+    echo Starting jvm...
+    ../../java fixup.jar com/unittest/App
+
     rm fixup.jar
 
-    cd -
+    cd ..
+    pwd
+
+
 done
