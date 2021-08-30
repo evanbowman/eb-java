@@ -396,6 +396,7 @@ void invoke_method(Class* clz,
         if (attr->attribute_name_index_.get() == jni::magic and
             attr->attribute_length_.get() == jni::magic) {
 
+            // FIXME: pop args...
             ((jni::MethodStub*)method)->implementation_();
             return;
 
@@ -531,8 +532,6 @@ static void dispatch_method(Class* clz,
 
     auto argc = parse_arguments(lhs_type);
 
-    // FIXME: argument parsing is broken. Arguments should be passed into local
-    // variables, not passed on the stack.
 
     Object* self = nullptr;
     if ((not direct_dispatch) or special) {
@@ -920,13 +919,11 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             break;
 
         case Bytecode::iconst_0:
-            puts("iconst_0");
             push_operand_i(0);
             ++pc;
             break;
 
         case Bytecode::iconst_1:
-            puts("iconst_1");
             push_operand_i(1);
             ++pc;
             break;
