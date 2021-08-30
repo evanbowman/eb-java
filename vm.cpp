@@ -771,7 +771,7 @@ void ldc2(Class* clz, u16 index)
 
 
 
-bool instanceof(Object* obj, Class* clz)
+bool instanceof (Object * obj, Class* clz)
 {
     auto current = obj->class_;
     while (current) {
@@ -801,7 +801,7 @@ find_exception_handler(Class* clz,
 
         if (pc >= entry.start_pc_.get() and pc < entry.end_pc_.get()) {
             auto catch_clz = load_class(clz, entry.catch_type_.get());
-            if (instanceof(exception, catch_clz)) {
+            if (instanceof (exception, catch_clz)) {
                 return &entry;
             }
         }
@@ -983,10 +983,12 @@ Exception* execute_bytecode(Class* clz,
             std::cout << "throw! stack size: " << __operand_stack.size()
                       << std::endl;
 
-            auto handler = find_exception_handler(clz, exn, pc, exception_table);
+            auto handler =
+                find_exception_handler(clz, exn, pc, exception_table);
             if (handler) {
                 std::cout << "found local handler..." << std::endl;
-                while (true) ;
+                while (true)
+                    ;
             } else {
                 return exn;
             }
@@ -1018,13 +1020,13 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
-        case Bytecode::instanceof: {
+        case Bytecode:: instanceof: {
             auto other =
                 load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
             auto obj = (Object*)load_operand(0);
             pop_operand();
             pc += 3;
-            push_operand_i(instanceof(obj, other));
+            push_operand_i(instanceof (obj, other));
             break;
         }
 
@@ -1817,7 +1819,8 @@ Exception* execute_bytecode(Class* clz,
             auto exn = dispatch_method(
                 clz, ((network_u16*)(bytecode + pc))->get(), false, false);
             if (exn) {
-                auto handler = find_exception_handler(clz, exn, pc, exception_table);
+                auto handler =
+                    find_exception_handler(clz, exn, pc, exception_table);
                 if (handler) {
                     // Subsequent bytecode will expect to be able to load the
                     // exception object into a local variable, so push it onto

@@ -81,7 +81,8 @@ struct ClassFile {
 
         const ExceptionTableEntry* entries() const
         {
-            return (const ExceptionTableEntry*)(((const u8*)this) + sizeof(ExceptionTable));
+            return (const ExceptionTableEntry*)(((const u8*)this) +
+                                                sizeof(ExceptionTable));
         }
     };
 
