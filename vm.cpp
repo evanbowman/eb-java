@@ -299,6 +299,7 @@ struct Bytecode {
         lconst_0        = 0x09,
         lconst_1        = 0x0a,
         lreturn         = 0xad,
+        ireturn         = 0xac,
         if_acmpeq       = 0xa5,
         if_acmpne       = 0xa6,
         if_icmpeq       = 0x9f,
@@ -390,13 +391,16 @@ void register_class(Slice name, Class* clz)
 
 
 
-void execute_bytecode(Class* clz, const u8* bytecode);
+void execute_bytecode(Class* clz,
+                      const u8* bytecode,
+                      const ArgumentInfo& argc);
 
 
 
 void invoke_method(Class* clz,
                    Object* self,
-                   const ClassFile::MethodInfo* method)
+                   const ClassFile::MethodInfo* method,
+                   const ArgumentInfo& argc)
 {
     for (int i = 0; i < method->attributes_count_.get(); ++i) {
         auto attr =
@@ -425,7 +429,7 @@ void invoke_method(Class* clz,
             alloc_locals(local_count);
             store_local(0, self);
 
-            execute_bytecode(clz, bytecode);
+            execute_bytecode(clz, bytecode, argc);
 
             free_locals(local_count);
         }
@@ -485,9 +489,9 @@ std::pair<const ClassFile::MethodInfo*, Class*> lookup_method(Class* clz,
 
 
 static void dispatch_method(Class* clz,
-                            Object* self,
                             u16 method_index,
-                            bool direct_dispatch)
+                            bool direct_dispatch,
+                            bool special)
 {
     auto ref = (const ClassFile::ConstantRef*)
         clz->constants_->load(method_index);
@@ -498,8 +502,21 @@ static void dispatch_method(Class* clz,
     auto lhs_name = clz->constants_->load_string(nt->name_index_.get());
     auto lhs_type = clz->constants_->load_string(nt->descriptor_index_.get());
 
+    // std::cout << std::string(lhs_type.ptr_, lhs_type.length_) << std::endl;
+
+    auto argc = parse_arguments(lhs_type);
+
+    // FIXME: I now realize that I'm not really handling arguments correctly at
+    // all. We need to pop all arguments off of the stack when returning from a
+    // function, and replace the result at the top of the stack.
+
+    Object* self = nullptr;
+    if ((not direct_dispatch) or special) {
+        self = (Object*)load_operand(argc.operand_count_);
+    }
+
     auto mtd = [&] {
-        if (self and not direct_dispatch) {
+        if (not direct_dispatch) {
             return lookup_method(self->class_, lhs_name, lhs_type);
         } else {
             // If we do not have a self pointer we're looking up a static
@@ -516,7 +533,10 @@ static void dispatch_method(Class* clz,
     }();
 
     if (mtd.first) {
-        invoke_method(mtd.second, self, mtd.first);
+        if (self) {
+            argc.operand_count_ += 1;
+        }
+        invoke_method(mtd.second, self, mtd.first, argc);
     } else {
         // TODO: raise error
         puts("method lookup failed!");
@@ -528,10 +548,7 @@ static void dispatch_method(Class* clz,
 
 void invoke_special(Class* clz, u16 method_index)
 {
-    auto self = (Object*)load_operand(0);
-    pop_operand();
-
-    dispatch_method(clz, self, method_index, true);
+    dispatch_method(clz, method_index, true, true);
 }
 
 
@@ -636,11 +653,20 @@ void ldc2(Class* clz, u16 index)
 
 
 
-void execute_bytecode(Class* clz, const u8* bytecode)
+void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
 {
     u32 pc = 0;
 
+    auto pop_arguments = [&] {
+        for (int i = 0; i < argc.operand_count_; ++i) {
+            // puts("pop argument");
+            pop_operand();
+        }
+    };
+
+
     while (true) {
+        // printf("vm loop %d %x\n", pc, bytecode[pc]);
         switch (bytecode[pc]) {
         case Bytecode::nop:
             ++pc;
@@ -691,6 +717,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
         case Bytecode::bipush:
             push_operand_i((s32)bytecode[pc + 1]);
+            // std::cout << "push"  << (s32)bytecode[pc + 1] << std::endl;
             pc += 2;
             break;
 
@@ -1018,16 +1045,6 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
 
         case Bytecode::if_icmplt:
-            if (load_operand_i(0) < load_operand_i(1)) {
-                pc += ((network_s16*)(bytecode + pc + 1))->get();
-            } else {
-                pc += 3;
-            }
-            pop_operand();
-            pop_operand();
-            break;
-
-        case Bytecode::if_icmpge:
             if (load_operand_i(0) > load_operand_i(1)) {
                 pc += ((network_s16*)(bytecode + pc + 1))->get();
             } else {
@@ -1037,8 +1054,19 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
             break;
 
+        case Bytecode::if_icmpge:
+            // std::cout << load_operand_i(0) << " > " << load_operand_i(1) << std::endl;
+            if (load_operand_i(0) < load_operand_i(1)) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            pop_operand();
+            break;
+
         case Bytecode::if_icmple:
-            if (load_operand_i(0) <= load_operand_i(1)) {
+            if (load_operand_i(0) >= load_operand_i(1)) {
                 pc += ((network_s16*)(bytecode + pc + 1))->get();
             } else {
                 pc += 3;
@@ -1543,7 +1571,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
             pop_operand();
             push_wide_operand_l(lhs + rhs);
-            std::cout << "ladd " << lhs << " + " << rhs << std::endl;
+            // std::cout << "ladd " << lhs << " + " << rhs << std::endl;
             ++pc;
             break;
         }
@@ -1556,39 +1584,50 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pc += ((network_s32*)(bytecode + pc + 1))->get();
             break;
 
-        case Bytecode::lreturn:
+        case Bytecode::lreturn: {
+            auto temp = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            pop_arguments();
+            push_wide_operand_l(temp);
+            return;
+        }
+
+        case Bytecode::ireturn:
         case Bytecode::areturn:
-        case Bytecode::freturn:
+        case Bytecode::freturn: {
+            auto op = load_operand(0);
+            pop_operand(); // return value
+            pop_arguments();
+            push_operand_p(op); // return value
+            return;
+        }
+
         case Bytecode::vreturn:
-            // NOTE: we implement return values on the stack. nothing to do here.
+            pop_arguments();
             return;
 
         case Bytecode::invokestatic:
             ++pc;
             dispatch_method(clz,
-                            nullptr,
-                            ((network_u16*)(bytecode + pc))->get(), false);
+                            ((network_u16*)(bytecode + pc))->get(), true, false);
             pc += 2;
             break;
 
         case Bytecode::invokevirtual: {
+            // std::cout << "stack before vcall " << __operand_stack.size() << std::endl;
             ++pc;
-            auto obj = (Object*)load_operand(0);
-            pop_operand();
             dispatch_method(clz,
-                            obj,
-                            ((network_u16*)(bytecode + pc))->get(), false);
+                            ((network_u16*)(bytecode + pc))->get(), false, false);
+            // std::cout << "stack after vcall " << __operand_stack.size() << std::endl;
             pc += 2;
             break;
         }
 
         case Bytecode::invokeinterface: {
             ++pc;
-            auto obj = (Object*)load_operand(0);
-            pop_operand();
             dispatch_method(clz,
-                            obj,
-                            ((network_u16*)(bytecode + pc))->get(), false);
+                            ((network_u16*)(bytecode + pc))->get(), false, false);
             pc += 4;
             break;
         }
@@ -1633,9 +1672,7 @@ void bootstrap()
         reference_array_class.super_ = obj_class;
     }
 
-    // idk why Runtime isn't on the java/lang/ classpath, but javac doesn't
-    // generate the full path in classfiles, so...
-    if (auto runtime_class = parse_classfile(Slice::from_c_str("Runtime"),
+    if (auto runtime_class = parse_classfile(Slice::from_c_str("java/lang/Runtime"),
                                              (const char*)runtime_class_data)) {
 
         runtime = make_instance_impl(runtime_class);
@@ -1652,6 +1689,8 @@ void bootstrap()
                                 Slice::from_c_str("exit"),
                                 Slice::from_c_str("TODO_:)"),
                                 [] {
+                                    std::cout << load_operand_i(0) << std::endl;
+                                    while (1) ;
                                     exit(load_operand_i(0));
                                 });
     }
@@ -1667,7 +1706,7 @@ void start_from_jar(const char* jar_file_bytes, Slice classpath)
 
     if (auto clz = java::jvm::import(classpath)) {
         if (auto entry = clz->load_method("main")) {
-            java::jvm::invoke_method(clz, nullptr, entry);
+            java::jvm::invoke_method(clz, nullptr, entry, {});
         }
     } else {
         puts("failed to import main class");
@@ -1682,7 +1721,7 @@ void start_from_classfile(const char* class_file_bytes, Slice classpath)
 
     if (auto clz = parse_classfile(classpath, class_file_bytes)) {
         if (auto entry = clz->load_method("main")) {
-            java::jvm::invoke_method(clz, nullptr, entry);
+            java::jvm::invoke_method(clz, nullptr, entry, {});
         }
     } else {
         puts("failed to import main class");

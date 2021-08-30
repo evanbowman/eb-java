@@ -1,12 +1,12 @@
 package com.unittest;
 
-/**
- *
- */
+
+
 public class App
 {
     public static void main(String[] args)
     {
-        while (true) ;
+
+        Runtime.getRuntime().exit(21);
     }
 }

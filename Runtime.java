@@ -1,3 +1,4 @@
+package java.lang;
 
 
 
@@ -7,7 +8,7 @@ class Runtime {
     public static native Runtime getRuntime();
 
 
-    public static native void exit(int code);
+    public native void exit(int code);
 
 
 }

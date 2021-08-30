@@ -228,4 +228,48 @@ Class* parse_classfile(Slice classname, const char* str);
 
 
 
+struct ArgumentInfo {
+    int operand_count_ = 0;
+};
+
+
+
+inline ArgumentInfo parse_arguments(Slice type_desc)
+{
+    ArgumentInfo result;
+
+    const char* str = type_desc.ptr_;
+    int i = 1;
+    while (true) {
+        switch (str[i]) {
+        default:
+            ++i;
+            ++result.operand_count_;
+            break;
+
+        case 'J':
+        case 'D':
+            ++i;
+            result.operand_count_ += 2;;
+            break;
+
+        case 'L':
+            // Object Reference
+            ++result.operand_count_;;
+            while (str[i] not_eq ';') {
+                ++i;
+            }
+            ++i;
+            break;
+
+        case ')':
+            return result;
+        }
+    }
+
+    return result;
+}
+
+
+
 }

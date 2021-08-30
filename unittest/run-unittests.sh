@@ -22,7 +22,7 @@ do
     rm -r ./tmp/
 
     echo Starting jvm...
-    ../../java fixup.jar com/unittest/App
+    gdb ../../java
 
     rm fixup.jar
 
