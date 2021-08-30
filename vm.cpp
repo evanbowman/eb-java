@@ -7,6 +7,8 @@
 #include <vector>
 #include "array.hpp"
 #include "jar.hpp"
+#define INCBIN_STYLE INCBIN_STYLE_SNAKE
+#include "incbin.h"
 
 
 
@@ -1589,28 +1591,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
 
 
-// FIXME: Ultimately, I intend for this code to run in embedded systems, so this
-// function should be removed, and all of the bootstrapped classes should be
-// inserted with incbin.
-const char* get_file_contents(const char* name)
-{
-    char * buffer = 0;
-    long length;
-    FILE * f = fopen(name, "rb");
-
-    if (f) {
-        fseek (f, 0, SEEK_END);
-        length = ftell (f);
-        fseek (f, 0, SEEK_SET);
-        buffer = (char*)::malloc (length);
-        if (buffer) {
-            fread(buffer, 1, length, f);
-        }
-        fclose (f);
-    }
-
-    return buffer;
-}
+INCBIN(object_classfile, "Object.class");
 
 
 
@@ -1619,7 +1600,7 @@ void bootstrap()
     // NOTE: I manually edited the bytecode in the Object classfile, which is
     // why I do not provide the source code. It's hand-rolled java bytecode.
     if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
-                                         get_file_contents("Object.class"))) {
+                                         (const char*)gobject_classfile_data)) {
         puts("successfully loaded Object root!");
 
         obj_class->super_ = nullptr;
