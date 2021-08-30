@@ -41,12 +41,19 @@ static Class reference_array_class{nullptr, nullptr, nullptr, nullptr, -1, 0};
 // TODO: maintain a secondary bitvector, where we can keep track of whether an
 // operand stack element is primitive or instance.
 std::vector<void*> __operand_stack;
+// For the GC implementation, we'll ultimately need to keep track of which
+// operands are objects.
+std::vector<bool> __operand_is_object;
+
 std::vector<void*> __locals;
+std::vector<bool> __local_is_object;
 
 
-void store_local(int index, void* value)
+
+void store_local(int index, void* value, bool is_object)
 {
     __locals[(__locals.size() - 1) - index] = value;
+    __local_is_object[(__local_is_object.size() - 1) - index] = is_object;
 }
 
 
@@ -60,8 +67,8 @@ void store_wide_local(int index, void* value)
 {
     s32* words = (s32*)value;
 
-    store_local(index, (void*)(intptr_t)words[0]);
-    store_local(index + 1, (void*)(intptr_t)words[1]);
+    store_local(index, (void*)(intptr_t)words[0], false);
+    store_local(index + 1, (void*)(intptr_t)words[1], false);
 }
 
 
@@ -78,6 +85,7 @@ void alloc_locals(int count)
 {
     for (int i = 0; i < count; ++i) {
         __locals.push_back(nullptr);
+        __local_is_object.push_back(false);
     }
 }
 
@@ -86,13 +94,21 @@ void free_locals(int count)
 {
     for (int i = 0; i < count; ++i) {
         __locals.pop_back();
+        __local_is_object.pop_back();
     }
+}
+
+
+void __push_operand_impl(void* value, bool is_object)
+{
+    __operand_stack.push_back(value);
+    __operand_is_object.push_back(is_object);
 }
 
 
 void push_operand_p(void* value)
 {
-    __operand_stack.push_back(value);
+    __push_operand_impl(value, false);
 }
 
 
@@ -101,19 +117,19 @@ void push_operand_p(void* value)
 // remember to push objects with push_operand_a.
 void push_operand_a(Object& value)
 {
-    push_operand_p(&value);
+    __push_operand_impl(&value, true);
 }
 
 
 void push_operand_i(s32 value)
 {
-    push_operand_p((void*)(intptr_t)value);
+    __push_operand_impl((void*)(intptr_t)value, false);
 }
 
 
 void __push_operand_f_impl(float* value)
 {
-    push_operand_p((void*)(intptr_t) * (int*)value);
+    __push_operand_impl((void*)(intptr_t) * (int*)value, false);
 }
 
 
@@ -194,9 +210,27 @@ double load_wide_operand_d(int offset)
 }
 
 
+void dup()
+{
+    __operand_stack.push_back(__operand_stack.back());
+    __operand_is_object.push_back(__operand_is_object.back());
+}
+
+
+void swap()
+{
+    std::swap(__operand_stack[__operand_stack.size() - 1],
+              __operand_stack[__operand_stack.size() - 2]);
+
+    std::swap(__operand_is_object[__operand_is_object.size() - 1],
+              __operand_is_object[__operand_is_object.size() - 2]);
+}
+
+
 void pop_operand()
 {
     __operand_stack.pop_back();
+    __operand_is_object.pop_back();
 }
 
 
@@ -378,7 +412,75 @@ void register_class(Slice name, Class* clz)
 
 
 
-void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc);
+void execute_bytecode(Class* clz, const u8* bytecode);
+
+
+
+void pop_arguments(const ArgumentInfo& argc)
+{
+    for (int i = 0; i < argc.operand_count_; ++i) {
+        // puts("pop argument");
+        pop_operand();
+    }
+}
+
+
+
+// Move arguments from the operand stack into local variable slots in the stack
+// frame.
+void bind_arguments(Object* self,
+                    const ArgumentInfo& argc,
+                    Slice type_signature)
+{
+    int local_param_index = 0;
+    int stack_load_index = argc.operand_count_ - 1;
+    if (self) {
+        store_local(local_param_index++, self, true);
+        stack_load_index --;
+    }
+
+    const char* str = type_signature.ptr_;
+    if (str) {
+        int i = 1;
+        while (true) {
+            switch (str[i]) {
+            default:
+                store_local(local_param_index,
+                            load_operand(stack_load_index--),
+                            false);
+                ++local_param_index;
+                ++i;
+                break;
+
+            case 'J':
+            case 'D':
+                // FIXME: store L/D args
+                local_param_index += 2;
+                stack_load_index -= 2;
+                ++i;
+                break;
+
+            case 'L':
+                store_local(local_param_index,
+                            load_operand(stack_load_index--),
+                            true);
+                ++local_param_index;
+                while (str[i] not_eq ';') {
+                    ++i;
+                }
+                ++i;
+                break;
+
+            case ')':
+                // We've moved all of the arguments from the operand stack to
+                // the stack frame, now we can pop the arguments off of the
+                // operand stack.
+                pop_arguments(argc);
+                return;
+            }
+        }
+    }
+}
 
 
 
@@ -396,8 +498,13 @@ void invoke_method(Class* clz,
         if (attr->attribute_name_index_.get() == jni::magic and
             attr->attribute_length_.get() == jni::magic) {
 
-            // FIXME: pop args...
+            alloc_locals(argc.operand_count_);
+
+            bind_arguments(self, argc, type_signature);
             ((jni::MethodStub*)method)->implementation_();
+
+            free_locals(argc.operand_count_);
+
             return;
 
         } else if (clz->constants_->load_string(
@@ -414,48 +521,8 @@ void invoke_method(Class* clz,
 
             alloc_locals(local_count);
 
-            int local_param_index = 0;
-            if (self) {
-                store_local(local_param_index++, self);
-            }
-
-            const char* str = type_signature.ptr_;
-            if (str) {
-                int i = 1;
-                while (true) {
-                    switch (str[i]) {
-                    default:
-                        store_local(local_param_index,
-                                    load_operand(argc.operand_count_ -
-                                                 local_param_index));
-                        ++local_param_index;
-                        ++i;
-                        break;
-
-                    case 'J':
-                    case 'D':
-                        puts("TODO: implement arg passing for long/double");
-                        break;
-
-                    case 'L':
-                        store_local(local_param_index,
-                                    load_operand(argc.operand_count_ -
-                                                 local_param_index));
-                        ++local_param_index;
-                        while (str[i] not_eq ';') {
-                            ++i;
-                        }
-                        ++i;
-                        break;
-
-                    case ')':
-                        goto EXEC;
-                    }
-                }
-            }
-
-        EXEC:
-            execute_bytecode(clz, bytecode, argc);
+            bind_arguments(self, argc, type_signature);
+            execute_bytecode(clz, bytecode);
 
             free_locals(local_count);
         }
@@ -680,16 +747,9 @@ void ldc2(Class* clz, u16 index)
 
 
 
-void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
+void execute_bytecode(Class* clz, const u8* bytecode)
 {
     u32 pc = 0;
-
-    auto pop_arguments = [&] {
-        for (int i = 0; i < argc.operand_count_; ++i) {
-            // puts("pop argument");
-            pop_operand();
-        }
-    };
 
 
     while (true) {
@@ -711,12 +771,7 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             break;
 
         case Bytecode::swap: {
-            auto one = load_operand(0);
-            auto two = load_operand(1);
-            pop_operand();
-            pop_operand();
-            push_operand_p(one);
-            push_operand_p(two);
+            swap();
             ++pc;
             break;
         }
@@ -874,6 +929,7 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
                 ;
 
         CAST_SUCCESS:
+            push_operand_a(*obj);
             pc += 3;
             break;
         }
@@ -903,11 +959,12 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
         }
 
         case Bytecode::dup:
-            push_operand_p(load_operand(0));
+            dup();
             ++pc;
             break;
 
         case Bytecode::dup2:
+            // FiXME: loses info about whether operands are objects.
             push_operand_p(load_operand(1));
             push_operand_p(load_operand(1));
             ++pc;
@@ -951,8 +1008,17 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
         case Bytecode::getfield: {
             auto arg = (Object*)load_operand(0);
             pop_operand();
-            push_operand_p(
-                arg->get_field(((network_u16*)&bytecode[pc + 1])->get()));
+
+            bool is_object;
+            auto field = arg->get_field(((network_u16*)&bytecode[pc + 1])->get(),
+                                        is_object);
+
+            if (is_object) {
+                push_operand_a(*(Object*)field);
+            } else {
+                push_operand_p(field);
+            }
+
             pc += 3;
             break;
         }
@@ -1320,76 +1386,121 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             break;
         }
 
-        case Bytecode::fstore:
         case Bytecode::astore:
+            store_local(bytecode[pc + 1], load_operand(0), true);
+            pop_operand();
+            pc += 2;
+            break;
+
+        case Bytecode::astore_0:
+            store_local(0, load_operand(0), true);
+            pop_operand();
+            ++pc;
+            break;
+
+        case Bytecode::astore_1:
+            store_local(1, load_operand(0), true);
+            pop_operand();
+            ++pc;
+            break;
+
+        case Bytecode::astore_2:
+            store_local(2, load_operand(0), true);
+            pop_operand();
+            ++pc;
+            break;
+
+        case Bytecode::astore_3:
+            store_local(3, load_operand(0), true);
+            pop_operand();
+            ++pc;
+            break;
+
+        case Bytecode::fstore:
         case Bytecode::istore:
-            store_local(bytecode[pc + 1], load_operand(0));
+            store_local(bytecode[pc + 1], load_operand(0), false);
             pop_operand();
             pc += 2;
             break;
 
         case Bytecode::fstore_0:
-        case Bytecode::astore_0:
         case Bytecode::istore_0:
-            store_local(0, load_operand(0));
+            store_local(0, load_operand(0), false);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore_1:
-        case Bytecode::astore_1:
         case Bytecode::istore_1:
-            store_local(1, load_operand(0));
+            store_local(1, load_operand(0), false);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore_2:
-        case Bytecode::astore_2:
         case Bytecode::istore_2:
-            store_local(2, load_operand(0));
+            store_local(2, load_operand(0), false);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore_3:
-        case Bytecode::astore_3:
         case Bytecode::istore_3:
-            store_local(3, load_operand(0));
+            store_local(3, load_operand(0), false);
             pop_operand();
             ++pc;
             break;
 
-        case Bytecode::fload:
         case Bytecode::aload:
+            push_operand_a(*(Object*)load_local(bytecode[pc + 1]));
+            pc += 2;
+            break;
+
+        case Bytecode::aload_0:
+            push_operand_a(*(Object*)load_local(0));
+            ++pc;
+            break;
+
+        case Bytecode::aload_1:
+            push_operand_a(*(Object*)load_local(1));
+            ++pc;
+            break;
+
+        case Bytecode::aload_2:
+            push_operand_a(*(Object*)load_local(2));
+            ++pc;
+            break;
+
+        case Bytecode::aload_3:
+            push_operand_a(*(Object*)load_local(3));
+            ++pc;
+            break;
+
+        case Bytecode::fload:
         case Bytecode::iload:
             push_operand_p(load_local(bytecode[pc + 1]));
             pc += 2;
             break;
 
         case Bytecode::fload_0:
-        case Bytecode::aload_0:
         case Bytecode::iload_0:
             push_operand_p(load_local(0));
             ++pc;
             break;
 
         case Bytecode::fload_1:
-        case Bytecode::aload_1:
         case Bytecode::iload_1:
             push_operand_p(load_local(1));
             ++pc;
             break;
 
         case Bytecode::fload_2:
-        case Bytecode::aload_2:
         case Bytecode::iload_2:
             push_operand_p(load_local(2));
             ++pc;
             break;
 
         case Bytecode::fload_3:
-        case Bytecode::aload_3:
         case Bytecode::iload_3:
             push_operand_p(load_local(3));
             ++pc;
@@ -1399,7 +1510,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             store_local(bytecode[pc + 1],
                         (void*)(intptr_t)(
                             (int)(intptr_t)(load_local(bytecode[pc + 1])) +
-                            bytecode[pc + 2]));
+                            bytecode[pc + 2]),
+                        false);
             pc += 3;
             break;
 
@@ -1610,27 +1722,13 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             pc += ((network_s32*)(bytecode + pc + 1))->get();
             break;
 
-        case Bytecode::lreturn: {
-            auto temp = load_wide_operand_l(0);
-            pop_operand();
-            pop_operand();
-            pop_arguments();
-            push_wide_operand_l(temp);
-            return;
-        }
-
+        case Bytecode::vreturn:
+        case Bytecode::lreturn:
         case Bytecode::ireturn:
         case Bytecode::areturn:
-        case Bytecode::freturn: {
-            auto op = load_operand(0);
-            pop_operand(); // return value
-            pop_arguments();
-            push_operand_p(op); // return value
-            return;
-        }
-
-        case Bytecode::vreturn:
-            pop_arguments();
+        case Bytecode::freturn:
+            // At the moment, we simply leave the argument on the operand stack,
+            // so we don't really care what type we're returning.
             return;
 
         case Bytecode::invokestatic:
@@ -1706,13 +1804,26 @@ void bootstrap()
         jni::bind_native_method(runtime_class,
                                 Slice::from_c_str("getRuntime"),
                                 Slice::from_c_str("TODO_:)"),
-                                [] { push_operand_a(*runtime); });
+                                [] {
+                                    push_operand_a(*runtime);
+                                });
 
 
         jni::bind_native_method(runtime_class,
                                 Slice::from_c_str("exit"),
                                 Slice::from_c_str("TODO_:)"),
-                                [] { exit(load_operand_i(0)); });
+                                [] {
+                                    exit((intptr_t)load_local(1));
+                                });
+
+
+        jni::bind_native_method(runtime_class,
+                                Slice::from_c_str("gc"),
+                                Slice::from_c_str("TODO_:)"),
+                                [] {
+                                    puts("TODO: gc");
+                                    while (true) ;
+                                });
     }
 }
 

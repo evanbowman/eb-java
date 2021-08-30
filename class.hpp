@@ -38,7 +38,7 @@ struct Class {
     void put_field(Object* obj, u16 const_pool_index, void* value);
 
 
-    void* get_field(Object* obj, u16 const_pool_index);
+    void* get_field(Object* obj, u16 const_pool_index, bool& is_object);
 
 
     // The extra memory required to hold all fields of an instance of this

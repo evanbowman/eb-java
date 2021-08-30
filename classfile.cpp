@@ -105,6 +105,11 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
                 auto field = (const ClassFile::FieldInfo*)classfile;
                 classfile += sizeof(ClassFile::FieldInfo);
 
+                if (field->access_flags_.get() & 0x08) {
+                    puts("TODO: implement static fields");
+                    while (true) ;
+                }
+
                 auto field_type = clz->constants_->load_string(
                     field->descriptor_index_.get());
 
@@ -123,6 +128,19 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
                     field_size = SubstitutionField::b2;
                 } else if (field_type == Slice::from_c_str("C")) {
                     field_size = SubstitutionField::b1;
+                } else if (field_type == Slice::from_c_str("J")) {
+                    puts("TODO: implement long fields");
+                    while (true) ;
+                } else if (field_type == Slice::from_c_str("D")) {
+                    puts("TODO: implement doule fields");
+                    while (true) ;
+                } else if (field_type.ptr_[0] == 'L') {
+                    // We use a special size enumeration for objects, not
+                    // because we cannot figure out how large a pointer is on
+                    // the target architecture, but becauese we care whether a
+                    // field is an object or a primitive when pushing fields
+                    // onto the operand stack.
+                    field_size = SubstitutionField::b_ref;
                 } else {
                     std::cout
                         << std::string(field_type.ptr_, field_type.length_)
@@ -138,7 +156,12 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
                     return {field_size, instance_offset};
                 }
 
-                instance_offset += (1 << field_size);
+                if (field_size == SubstitutionField::b_ref) {
+                    instance_offset += sizeof(Object*);
+                } else {
+                    instance_offset += (1 << field_size);
+                }
+
 
                 // Skip over attributes...
                 for (int i = 0; i < field->attributes_count_.get(); ++i) {

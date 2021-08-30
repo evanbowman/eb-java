@@ -17,7 +17,8 @@ struct MethodStub {
     ClassFile::MethodInfo method_info_;
     ClassFile::AttributeInfo attribute_info_;
 
-    void (*implementation_)();
+    void (*implementation_)(); // Return the number of operand stack slots used
+                               // by function result.
 };
 
 

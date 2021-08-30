@@ -23,9 +23,9 @@ struct Object {
     }
 
 
-    void* get_field(u16 const_pool_index)
+    void* get_field(u16 const_pool_index, bool& is_object)
     {
-        return class_->get_field(this, const_pool_index);
+        return class_->get_field(this, const_pool_index, is_object);
     }
 };
 

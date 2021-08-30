@@ -33,6 +33,7 @@ do
     rm fixup.jar
 
     cd ..
-    pwd
+
+    echo ""
 
 done

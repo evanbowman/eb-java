@@ -43,7 +43,7 @@ const ClassFile::MethodInfo* Class::load_method(const char* name)
 
 
 
-void* Class::get_field(Object* obj, u16 index)
+void* Class::get_field(Object* obj, u16 index, bool& is_object)
 {
     auto c = constants_->load(index);
 
@@ -52,7 +52,14 @@ void* Class::get_field(Object* obj, u16 index)
     u8* obj_ram = ((u8*)obj) + sizeof(Object);
 
     // printf("(get field) index %d from %p\n", index, obj_ram);
-
+    if (sub->size_ == SubstitutionField::b_ref) {
+        is_object = true;
+        Object* val;
+        memcpy(&val, obj_ram + sub->offset_, sizeof(Object*));
+        return val;
+    } else {
+        is_object = false;
+    }
 
     switch (1 << sub->size_) {
     case 1:
@@ -94,18 +101,27 @@ void Class::put_field(Object* obj, u16 index, void* value)
 
     u8* obj_ram = ((u8*)obj) + sizeof(Object);
 
+    if (sub->size_ == SubstitutionField::b_ref) {
+        memcpy(obj_ram + sub->offset_, &value, sizeof(Object*));
+        return;
+    }
+
     switch (1 << sub->size_) {
     case 1:
         obj_ram[sub->offset_] = (u8)(intptr_t)value;
         break;
 
-    case 2:
-        memcpy(obj_ram + sub->offset_, &value, 2);
+    case 2: {
+        s16 val = (s16)(intptr_t)value;
+        memcpy(obj_ram + sub->offset_, &val, sizeof val);
         break;
+    }
 
-    case 4:
-        memcpy(obj_ram + sub->offset_, &value, 4);
+    case 4: {
+        s32 val = (s32)(intptr_t)value;
+        memcpy(obj_ram + sub->offset_, &val, sizeof val);
         break;
+    }
 
     case 8:
         puts("TODO: implement eight byte fields!");
@@ -131,7 +147,7 @@ size_t Class::instance_fields_size()
             auto sub = (SubstitutionField*)current->constants_->load(
                 current->cpool_highest_field_);
 
-            return sub->offset_ + (1 << sub->size_);
+            return sub->offset_ + sub->real_size();
 
         } else {
             current = current->super_;

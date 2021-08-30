@@ -11,4 +11,7 @@ class Runtime {
     public native void exit(int code);
 
 
+    public native void gc();
+
+
 }
