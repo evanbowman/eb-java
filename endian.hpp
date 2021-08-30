@@ -159,8 +159,6 @@ using host_s64 = HostInteger<s64>;
 
 
 
-
-
 template <typename T> T to_network_order(T value);
 
 

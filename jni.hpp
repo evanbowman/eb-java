@@ -9,9 +9,7 @@ namespace jni {
 
 
 
-enum {
-    magic = 65535
-};
+enum { magic = 65535 };
 
 
 
@@ -21,7 +19,6 @@ struct MethodStub {
 
     void (*implementation_)();
 };
-
 
 
 
@@ -35,5 +32,5 @@ void bind_native_method(Class* clz,
 
 
 
-}
-}
+} // namespace jni
+} // namespace java

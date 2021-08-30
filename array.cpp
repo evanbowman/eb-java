@@ -21,4 +21,4 @@ Array* Array::create(int size, u8 element_size)
 
 
 
-}
+} // namespace java

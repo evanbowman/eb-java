@@ -1,7 +1,7 @@
 #pragma once
 
-#include "slice.hpp"
 #include "class.hpp"
+#include "slice.hpp"
 
 
 
@@ -27,5 +27,5 @@ void* malloc(size_t);
 
 
 
-}
-}
+} // namespace jvm
+} // namespace java

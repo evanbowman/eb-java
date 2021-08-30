@@ -9,7 +9,7 @@ do
     cd $dir
     echo building jar for $dir
     echo Building test jar...
-    mvn clean install -DskipTests > /dev/null
+    mvn clean install -DskipTests > build-log.txt
 
     echo Unpacking test jar...
     unzip target/test-1.0-SNAPSHOT.jar -d ./tmp/ > /dev/null
@@ -22,7 +22,13 @@ do
     rm -r ./tmp/
 
     echo Starting jvm...
-    gdb ../../java
+    ../../java fixup.jar com/unittest/App
+    exit_status=$?
+    if [ $exit_status -eq 1 ]; then
+        echo unit test failed!
+        exit 1
+    fi
+
 
     rm fixup.jar
 

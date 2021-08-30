@@ -3,7 +3,6 @@
 
 
 
-
 namespace java {
 
 
@@ -14,12 +13,10 @@ const char* ConstantPoolArrayImpl::parse(const ClassFile::HeaderSection1& src)
     // spaces in the constant pool. needs to be fixed for if/when we resurrect
     // this stuff.
 
-    array_ = (const ClassFile::ConstantHeader**)
-        jvm::malloc(sizeof(ClassFile::ConstantHeader*) *
-                    src.constant_count_.get() - 1);
+    array_ = (const ClassFile::ConstantHeader**)jvm::malloc(
+        sizeof(ClassFile::ConstantHeader*) * src.constant_count_.get() - 1);
 
-    const char* str =
-        ((const char*)&src) + sizeof(ClassFile::HeaderSection1);
+    const char* str = ((const char*)&src) + sizeof(ClassFile::HeaderSection1);
 
 
     for (int i = 0; i < src.constant_count_.get() - 1; ++i) {
@@ -32,12 +29,12 @@ const char* ConstantPoolArrayImpl::parse(const ClassFile::HeaderSection1& src)
 
 
 
-
 void ConstantPoolCompactImpl::reserve_fields(int count)
 {
     if (bindings_) {
         puts("error: reserve_fields!");
-        while (true) ;
+        while (true)
+            ;
     }
 
     bindings_ = (FieldBinding*)jvm::malloc(sizeof(FieldBinding) * count);
@@ -50,7 +47,8 @@ void ConstantPoolCompactImpl::reserve_fields(int count)
 
     if (bindings_ == nullptr) {
         puts("malloc failed!");
-        while (true) ;
+        while (true)
+            ;
     }
 
     binding_count_ = count;
@@ -58,5 +56,4 @@ void ConstantPoolCompactImpl::reserve_fields(int count)
 
 
 
-
-}
+} // namespace java

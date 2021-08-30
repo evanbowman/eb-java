@@ -2,9 +2,9 @@
 
 #include "classfile.hpp"
 #include "slice.hpp"
-#include <stdio.h>
 #include "substitutionField.hpp"
 #include <iostream>
+#include <stdio.h>
 
 
 // NOTE: Creating a constant pool in memory for every class takes up a lot of
@@ -42,12 +42,12 @@ public:
         auto constant = load(index);
 
         if (constant->tag_ == ClassFile::ConstantType::t_utf8) {
-            return Slice {
-                (const char*)constant + sizeof(ClassFile::ConstantUtf8),
-                ((ClassFile::ConstantUtf8*)constant)->length_.get()
-            };
+            return Slice{(const char*)constant +
+                             sizeof(ClassFile::ConstantUtf8),
+                         ((ClassFile::ConstantUtf8*)constant)->length_.get()};
         } else {
-            while (true) ;
+            while (true)
+                ;
         }
     }
 };
@@ -58,8 +58,6 @@ public:
 // stores an array of pointers into the classfile.
 class ConstantPoolArrayImpl : public ConstantPool {
 public:
-
-
     const char* parse(const ClassFile::HeaderSection1& src) override;
 
 
@@ -71,13 +69,15 @@ public:
 
     void reserve_fields(int) override
     {
-        while (true) ; // TODO
+        while (true)
+            ; // TODO
     }
 
 
     void bind_field(u16 index, SubstitutionField field) override
     {
-        while (true) ; // TODO
+        while (true)
+            ; // TODO
         // array_[index - 1] = (const ClassFile::ConstantHeader*)field;
     }
 
@@ -91,8 +91,6 @@ private:
 // This class uses minimal extra memory.
 class ConstantPoolCompactImpl : public ConstantPool {
 public:
-
-
     // Requires O(n), where n is the number of constants in the constant pool.
     const ClassFile::ConstantHeader* load(u16 index) override
     {
@@ -155,8 +153,9 @@ public:
 
     void bind_field(u16 index, SubstitutionField field) override
     {
-        for (int i = 0; ; ++i) {
-            if (bindings_[i].field_.size_ == SubstitutionField::Size::b_invalid) {
+        for (int i = 0;; ++i) {
+            if (bindings_[i].field_.size_ ==
+                SubstitutionField::Size::b_invalid) {
                 bindings_[i].index_ = index - 1;
                 bindings_[i].field_ = field;
                 return;
@@ -177,7 +176,6 @@ private:
 // implementation, but caches some recent constant lookups in a local buffer.
 class ConstantPoolCompactCachingImpl : public ConstantPoolCompactImpl {
 private:
-
     struct {
         u16 index_ = 0;
         const ClassFile::ConstantHeader* constant_ = nullptr;
@@ -186,7 +184,6 @@ private:
     u8 evict_ = 0;
 
 public:
-
     const ClassFile::ConstantHeader* load(u16 index) override
     {
         for (auto& elem : cache_) {
@@ -205,4 +202,4 @@ public:
 
 
 
-}
+} // namespace java

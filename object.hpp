@@ -31,4 +31,4 @@ struct Object {
 
 
 
-}
+} // namespace java

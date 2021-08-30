@@ -48,5 +48,4 @@ struct Class {
 
 
 
-
-}
+} // namespace java

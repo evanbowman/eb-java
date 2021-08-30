@@ -1,7 +1,7 @@
 #pragma once
 
-#include <string.h>
 #include <algorithm>
+#include <string.h>
 
 
 
@@ -16,18 +16,17 @@ struct Slice {
 
     static Slice from_c_str(const char* c_str)
     {
-        return { c_str, strlen(c_str) };
+        return {c_str, strlen(c_str)};
     }
 
 
     bool operator==(const Slice& other) const
     {
         return length_ == other.length_ and
-            strncmp(other.ptr_, ptr_, length_) == 0;
+               strncmp(other.ptr_, ptr_, length_) == 0;
     }
 };
 
 
 
-
-}
+} // namespace java

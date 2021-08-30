@@ -28,7 +28,8 @@ void bind_native_method(Class* clz,
 
             auto old_method = clz->methods_[i];
 
-            memcpy(&stub->method_info_, old_method, sizeof(ClassFile::MethodInfo));
+            memcpy(
+                &stub->method_info_, old_method, sizeof(ClassFile::MethodInfo));
 
             stub->method_info_.attributes_count_.set(1);
 
@@ -49,5 +50,5 @@ void bind_native_method(Class* clz,
 
 
 
-}
-}
+} // namespace jni
+} // namespace java

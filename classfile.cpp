@@ -21,8 +21,9 @@ namespace java {
 // the same name.
 SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
 {
-    auto src_nt = (const ClassFile::ConstantNameAndType*)
-        current->constants_->load(ref.name_and_type_index_.get());
+    auto src_nt =
+        (const ClassFile::ConstantNameAndType*)current->constants_->load(
+            ref.name_and_type_index_.get());
 
     auto local_field_type =
         current->constants_->load_string(src_nt->descriptor_index_.get());
@@ -104,8 +105,8 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
                 auto field = (const ClassFile::FieldInfo*)classfile;
                 classfile += sizeof(ClassFile::FieldInfo);
 
-                auto field_type =
-                    clz->constants_->load_string(field->descriptor_index_.get());
+                auto field_type = clz->constants_->load_string(
+                    field->descriptor_index_.get());
 
                 auto field_name =
                     clz->constants_->load_string(field->name_index_.get());
@@ -123,9 +124,12 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
                 } else if (field_type == Slice::from_c_str("C")) {
                     field_size = SubstitutionField::b1;
                 } else {
-                    std::cout << std::string(field_type.ptr_, field_type.length_) << std::endl;
+                    std::cout
+                        << std::string(field_type.ptr_, field_type.length_)
+                        << std::endl;
                     puts("TODO: field sizes...");
-                    while (true) ;
+                    while (true)
+                        ;
                 }
 
                 if (field_type == local_field_type and
@@ -139,9 +143,8 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
                 // Skip over attributes...
                 for (int i = 0; i < field->attributes_count_.get(); ++i) {
                     auto attr = (ClassFile::AttributeInfo*)classfile;
-                    classfile +=
-                        sizeof(ClassFile::AttributeInfo) +
-                        attr->attribute_length_.get();
+                    classfile += sizeof(ClassFile::AttributeInfo) +
+                                 attr->attribute_length_.get();
                 }
             }
             clz = clz->super_;
@@ -170,7 +173,8 @@ const char* parse_classfile_fields(const char* str,
                        c->tag_ == ClassFile::t_long) {
                 ++i;
             }
-            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+            str +=
+                ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
         }
     }
 
@@ -192,13 +196,15 @@ const char* parse_classfile_fields(const char* str,
 
                 clz->constants_->bind_field(i + 1, field);
 
-                if (auto other_clz = jvm::load_class(clz, ref.class_index_.get())) {
+                if (auto other_clz =
+                        jvm::load_class(clz, ref.class_index_.get())) {
                     // If we're registering a field for the same class as we're
                     // parsing...
                     if (other_clz == clz) {
                         if (clz->cpool_highest_field_ not_eq -1) {
-                            auto prev = (SubstitutionField*)
-                                clz->constants_->load(clz->cpool_highest_field_);
+                            auto prev =
+                                (SubstitutionField*)clz->constants_->load(
+                                    clz->cpool_highest_field_);
                             if (field.offset_ > prev->offset_) {
                                 clz->cpool_highest_field_ = i + 1;
                             }
@@ -212,7 +218,8 @@ const char* parse_classfile_fields(const char* str,
                 ++i;
             }
 
-            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+            str +=
+                ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
         }
     }
 
@@ -227,9 +234,8 @@ const char* parse_classfile_fields(const char* str,
 
         for (int i = 0; i < field->attributes_count_.get(); ++i) {
             auto attr = (ClassFile::AttributeInfo*)str;
-            str +=
-                sizeof(ClassFile::AttributeInfo) +
-                attr->attribute_length_.get();
+            str += sizeof(ClassFile::AttributeInfo) +
+                   attr->attribute_length_.get();
         }
     }
 
@@ -250,10 +256,11 @@ Class* parse_classfile(Slice classname, const char* str)
 
     if (not clz) {
         puts("failed to alloc constant class memory");
-        while (true) ; // TODO: raise error
+        while (true)
+            ; // TODO: raise error
     }
 
-    new (clz)Class();
+    new (clz) Class();
 
     clz->classfile_data_ = str;
 
@@ -287,14 +294,13 @@ Class* parse_classfile(Slice classname, const char* str)
 
     if (h4->methods_count_.get()) {
 
-        clz->methods_ =
-            (const ClassFile::MethodInfo**)
-            jvm::malloc(sizeof(ClassFile::MethodInfo*)
-                        * h4->methods_count_.get());
+        clz->methods_ = (const ClassFile::MethodInfo**)jvm::malloc(
+            sizeof(ClassFile::MethodInfo*) * h4->methods_count_.get());
 
         if (clz->methods_ == nullptr) {
             puts("failed to alloc method table");
-            while (true) ; // TODO: raise error...
+            while (true)
+                ; // TODO: raise error...
         }
 
         clz->method_count_ = h4->methods_count_.get();
@@ -308,9 +314,8 @@ Class* parse_classfile(Slice classname, const char* str)
 
             for (int i = 0; i < method->attributes_count_.get(); ++i) {
                 auto attr = (ClassFile::AttributeInfo*)str;
-                str +=
-                    sizeof(ClassFile::AttributeInfo) +
-                    attr->attribute_length_.get();
+                str += sizeof(ClassFile::AttributeInfo) +
+                       attr->attribute_length_.get();
             }
         }
     }
@@ -322,9 +327,8 @@ Class* parse_classfile(Slice classname, const char* str)
     if (h5->attributes_count_.get()) {
         for (int i = 0; i < h5->attributes_count_.get(); ++i) {
             auto attr = (ClassFile::AttributeInfo*)str;
-            str +=
-                sizeof(ClassFile::AttributeInfo) +
-                attr->attribute_length_.get();
+            str += sizeof(ClassFile::AttributeInfo) +
+                   attr->attribute_length_.get();
 
             auto attr_name =
                 clz->constants_->load_string(attr->attribute_name_index_.get());
@@ -342,4 +346,4 @@ Class* parse_classfile(Slice classname, const char* str)
 
 
 
-}
+} // namespace java

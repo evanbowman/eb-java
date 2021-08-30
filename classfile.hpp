@@ -1,8 +1,8 @@
 #pragma once
 
 #include "endian.hpp"
-#include <stdio.h>
 #include "slice.hpp"
+#include <stdio.h>
 
 
 
@@ -169,7 +169,8 @@ struct ClassFile {
         switch (hdr->tag_) {
         default:
             printf("error, constant %d\n", hdr->tag_);
-            while (true) ;
+            while (true)
+                ;
             break;
 
         case ClassFile::ConstantType::t_class:
@@ -203,8 +204,8 @@ struct ClassFile {
             return sizeof(ClassFile::ConstantNameAndType);
 
         case ClassFile::ConstantType::t_utf8:
-            return sizeof(ClassFile::ConstantUtf8)
-                + ((const ClassFile::ConstantUtf8*)hdr)->length_.get();
+            return sizeof(ClassFile::ConstantUtf8) +
+                   ((const ClassFile::ConstantUtf8*)hdr)->length_.get();
 
         case ClassFile::ConstantType::t_method_handle:
             return sizeof(ClassFile::ConstantMethodHandle);
@@ -229,6 +230,7 @@ Class* parse_classfile(Slice classname, const char* str);
 
 
 struct ArgumentInfo {
+    int argument_count_ = 0;
     int operand_count_ = 0;
 };
 
@@ -244,18 +246,23 @@ inline ArgumentInfo parse_arguments(Slice type_desc)
         switch (str[i]) {
         default:
             ++i;
+            ++result.argument_count_;
             ++result.operand_count_;
             break;
 
         case 'J':
         case 'D':
             ++i;
-            result.operand_count_ += 2;;
+            ++result.argument_count_;
+            result.operand_count_ += 2;
+            ;
             break;
 
         case 'L':
             // Object Reference
-            ++result.operand_count_;;
+            ++result.argument_count_;
+            ++result.operand_count_;
+            ;
             while (str[i] not_eq ';') {
                 ++i;
             }
@@ -272,4 +279,4 @@ inline ArgumentInfo parse_arguments(Slice type_desc)
 
 
 
-}
+} // namespace java

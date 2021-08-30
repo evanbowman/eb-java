@@ -1,13 +1,13 @@
-#include "classfile.hpp"
+#include "array.hpp"
 #include "class.hpp"
+#include "classfile.hpp"
 #include "endian.hpp"
+#include "jar.hpp"
+#include "jni.hpp"
 #include "object.hpp"
 #include <iostream>
 #include <string.h>
 #include <vector>
-#include "array.hpp"
-#include "jar.hpp"
-#include "jni.hpp"
 #define INCBIN_PREFIX
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
 #include "incbin.h"
@@ -23,7 +23,7 @@ static const char* jar_file_data;
 
 
 
-static Class primitive_array_class {
+static Class primitive_array_class{
     nullptr, // constants
     nullptr, // methods
     nullptr, // super (will be filled in with Object by the bootstrap code)
@@ -35,14 +35,7 @@ static Class primitive_array_class {
 
 // We make the distinction between primitive arrays and reference arrays,
 // because later on, we will need to track gc roots.
-static Class reference_array_class {
-    nullptr,
-    nullptr,
-    nullptr,
-    nullptr,
-    -1,
-    0
-};
+static Class reference_array_class{nullptr, nullptr, nullptr, nullptr, -1, 0};
 
 
 // TODO: maintain a secondary bitvector, where we can keep track of whether an
@@ -53,7 +46,6 @@ std::vector<void*> __locals;
 
 void store_local(int index, void* value)
 {
-    // std::cout << "write to local " << index << ": " << value << std::endl;
     __locals[(__locals.size() - 1) - index] = value;
 }
 
@@ -68,11 +60,8 @@ void store_wide_local(int index, void* value)
 {
     s32* words = (s32*)value;
 
-    // std::cout << "swl " << index << ": " << words[0] << " " << words[1] << std::endl;
-
     store_local(index, (void*)(intptr_t)words[0]);
     store_local(index + 1, (void*)(intptr_t)words[1]);
-
 }
 
 
@@ -80,12 +69,8 @@ void load_wide_local(int index, void* result)
 {
     s32* words = (s32*)result;
 
-    // std::cout << load_local(index) << ", " << load_local(index + 1) << std::endl;
-
     words[0] = (s32)(intptr_t)load_local(index);
     words[1] = (s32)(intptr_t)load_local(index + 1);
-
-    // std::cout << "lwl " << index << ": " << words[0] << " " << words[1] << std::endl;
 }
 
 
@@ -128,7 +113,7 @@ void push_operand_i(s32 value)
 
 void __push_operand_f_impl(float* value)
 {
-    push_operand_p((void*)(intptr_t)*(int*)value);
+    push_operand_p((void*)(intptr_t) * (int*)value);
 }
 
 
@@ -215,7 +200,7 @@ void pop_operand()
 }
 
 
-
+// clang-format off
 struct Bytecode {
     enum : u8 {
         nop             = 0x00,
@@ -353,6 +338,7 @@ struct Bytecode {
         // jsr_w         = 0xc9,
     };
 };
+// clang-format on
 
 
 struct ClassTableEntry {
@@ -370,7 +356,8 @@ Class* import(Slice classpath)
 {
     if (jar_file_data == nullptr) {
         puts("missing jar, import failed");
-        while (true) ;
+        while (true)
+            ;
     }
 
     auto data = jar::load_classfile(jar_file_data, classpath);
@@ -391,21 +378,19 @@ void register_class(Slice name, Class* clz)
 
 
 
-void execute_bytecode(Class* clz,
-                      const u8* bytecode,
-                      const ArgumentInfo& argc);
+void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc);
 
 
 
 void invoke_method(Class* clz,
                    Object* self,
                    const ClassFile::MethodInfo* method,
-                   const ArgumentInfo& argc)
+                   const ArgumentInfo& argc,
+                   Slice type_signature)
 {
     for (int i = 0; i < method->attributes_count_.get(); ++i) {
-        auto attr =
-            (ClassFile::AttributeInfo*)
-            ((const char*)method + sizeof(ClassFile::MethodInfo));
+        auto attr = (ClassFile::AttributeInfo*)((const char*)method +
+                                                sizeof(ClassFile::MethodInfo));
 
 
         if (attr->attribute_name_index_.get() == jni::magic and
@@ -414,12 +399,12 @@ void invoke_method(Class* clz,
             ((jni::MethodStub*)method)->implementation_();
             return;
 
-        } else if (clz->constants_->load_string(attr->attribute_name_index_.get()) ==
-            Slice::from_c_str("Code")) {
+        } else if (clz->constants_->load_string(
+                       attr->attribute_name_index_.get()) ==
+                   Slice::from_c_str("Code")) {
 
             auto bytecode =
-                ((const u8*)attr)
-                + sizeof(ClassFile::AttributeCode);
+                ((const u8*)attr) + sizeof(ClassFile::AttributeCode);
 
             const auto local_count =
                 std::max(((ClassFile::AttributeCode*)attr)->max_locals_.get(),
@@ -427,8 +412,48 @@ void invoke_method(Class* clz,
                                   // must be at least four slots.
 
             alloc_locals(local_count);
-            store_local(0, self);
 
+            int local_param_index = 0;
+            if (self) {
+                store_local(local_param_index++, self);
+            }
+
+            const char* str = type_signature.ptr_;
+            if (str) {
+                int i = 1;
+                while (true) {
+                    switch (str[i]) {
+                    default:
+                        store_local(local_param_index,
+                                    load_operand(argc.operand_count_ -
+                                                 local_param_index));
+                        ++local_param_index;
+                        ++i;
+                        break;
+
+                    case 'J':
+                    case 'D':
+                        puts("TODO: implement arg passing for long/double");
+                        break;
+
+                    case 'L':
+                        store_local(local_param_index,
+                                    load_operand(argc.operand_count_ -
+                                                 local_param_index));
+                        ++local_param_index;
+                        while (str[i] not_eq ';') {
+                            ++i;
+                        }
+                        ++i;
+                        break;
+
+                    case ')':
+                        goto EXEC;
+                    }
+                }
+            }
+
+        EXEC:
             execute_bytecode(clz, bytecode, argc);
 
             free_locals(local_count);
@@ -440,10 +465,12 @@ void invoke_method(Class* clz,
 
 Class* load_class(Class* current_module, u16 class_index)
 {
-    auto c_clz = (const ClassFile::ConstantClass*)
-        current_module->constants_->load(class_index);
+    auto c_clz =
+        (const ClassFile::ConstantClass*)current_module->constants_->load(
+            class_index);
 
-    auto cname = current_module->constants_->load_string(c_clz->name_index_.get());
+    auto cname =
+        current_module->constants_->load_string(c_clz->name_index_.get());
 
     for (auto& entry : class_table) {
         if (entry.name_ == cname) {
@@ -455,15 +482,15 @@ Class* load_class(Class* current_module, u16 class_index)
         return clz;
     } else {
         puts("missing class!");
-        while (true) ;
+        while (true)
+            ;
     }
 }
 
 
 
-std::pair<const ClassFile::MethodInfo*, Class*> lookup_method(Class* clz,
-                                                              Slice lhs_name,
-                                                              Slice lhs_type)
+std::pair<const ClassFile::MethodInfo*, Class*>
+lookup_method(Class* clz, Slice lhs_name, Slice lhs_type)
 {
     if (clz->methods_) {
         for (int i = 0; i < clz->method_count_; ++i) {
@@ -493,22 +520,19 @@ static void dispatch_method(Class* clz,
                             bool direct_dispatch,
                             bool special)
 {
-    auto ref = (const ClassFile::ConstantRef*)
-        clz->constants_->load(method_index);
+    auto ref =
+        (const ClassFile::ConstantRef*)clz->constants_->load(method_index);
 
-    auto nt = (const ClassFile::ConstantNameAndType*)
-        clz->constants_->load(ref->name_and_type_index_.get());
+    auto nt = (const ClassFile::ConstantNameAndType*)clz->constants_->load(
+        ref->name_and_type_index_.get());
 
     auto lhs_name = clz->constants_->load_string(nt->name_index_.get());
     auto lhs_type = clz->constants_->load_string(nt->descriptor_index_.get());
 
-    // std::cout << std::string(lhs_type.ptr_, lhs_type.length_) << std::endl;
-
     auto argc = parse_arguments(lhs_type);
 
-    // FIXME: I now realize that I'm not really handling arguments correctly at
-    // all. We need to pop all arguments off of the stack when returning from a
-    // function, and replace the result at the top of the stack.
+    // FIXME: argument parsing is broken. Arguments should be passed into local
+    // variables, not passed on the stack.
 
     Object* self = nullptr;
     if ((not direct_dispatch) or special) {
@@ -526,7 +550,8 @@ static void dispatch_method(Class* clz,
             if (t_clz == nullptr) {
                 printf("failed to load class %d, TODO: raise error...\n",
                        ref->class_index_.get());
-                while (true) ;
+                while (true)
+                    ;
             }
             return lookup_method(t_clz, lhs_name, lhs_type);
         }
@@ -536,11 +561,12 @@ static void dispatch_method(Class* clz,
         if (self) {
             argc.operand_count_ += 1;
         }
-        invoke_method(mtd.second, self, mtd.first, argc);
+        invoke_method(mtd.second, self, mtd.first, argc, lhs_type);
     } else {
         // TODO: raise error
         puts("method lookup failed!");
-        while (true);
+        while (true)
+            ;
     }
 }
 
@@ -613,7 +639,8 @@ void ldc1(Class* clz, u16 index)
 
     default:
         puts("unhandled ldc...");
-        while (true) ;
+        while (true)
+            ;
         break;
     }
 }
@@ -646,7 +673,8 @@ void ldc2(Class* clz, u16 index)
 
     default:
         puts("invalid ldc...");
-        while (true) ;
+        while (true)
+            ;
         break;
     }
 }
@@ -710,14 +738,13 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             break;
 
         case Bytecode::new_inst:
-            push_operand_a(*make_instance(clz, ((network_u16*)&bytecode[pc + 1])->get()));
-            // printf("new %p\n", load_operand(0));
+            push_operand_a(
+                *make_instance(clz, ((network_u16*)&bytecode[pc + 1])->get()));
             pc += 3;
             break;
 
         case Bytecode::bipush:
             push_operand_i((s32)bytecode[pc + 1]);
-            // std::cout << "push"  << (s32)bytecode[pc + 1] << std::endl;
             pc += 2;
             break;
 
@@ -790,7 +817,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
                 push_operand_a(*result);
             } else {
                 puts("array index out of bounds");
-                while (true) ;
+                while (true)
+                    ;
             }
             ++pc;
             break;
@@ -814,7 +842,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             } else {
                 // TODO: throw error
                 puts("array index out of bounds!");
-                while (true) ;
+                while (true)
+                    ;
             }
             ++pc;
             break;
@@ -842,14 +871,15 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
 
             // TODO: throw class cast exception!
             puts("bad cast");
-            while (true) ;
+            while (true)
+                ;
 
-            CAST_SUCCESS:
+        CAST_SUCCESS:
             pc += 3;
             break;
         }
 
-        case Bytecode::instanceof: {
+        case Bytecode:: instanceof: {
             auto other =
                 load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
             auto obj = (Object*)load_operand(0);
@@ -868,7 +898,7 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             push_operand_i(0);
             break;
 
-            FOUND_INSTANCEOF:
+        FOUND_INSTANCEOF:
             push_operand_i(1);
             break;
         }
@@ -890,11 +920,13 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             break;
 
         case Bytecode::iconst_0:
+            puts("iconst_0");
             push_operand_i(0);
             ++pc;
             break;
 
         case Bytecode::iconst_1:
+            puts("iconst_1");
             push_operand_i(1);
             ++pc;
             break;
@@ -922,15 +954,16 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
         case Bytecode::getfield: {
             auto arg = (Object*)load_operand(0);
             pop_operand();
-            push_operand_p(arg->get_field(((network_u16*)&bytecode[pc + 1])->get()));
-            // printf("%d\n", (int)(intptr_t)load_operand(0));
+            push_operand_p(
+                arg->get_field(((network_u16*)&bytecode[pc + 1])->get()));
             pc += 3;
             break;
         }
 
         case Bytecode::putfield:
-            ((Object*)load_operand(1))->put_field(((network_u16*)&bytecode[pc + 1])->get(),
-                                                  load_operand(0));
+            ((Object*)load_operand(1))
+                ->put_field(((network_u16*)&bytecode[pc + 1])->get(),
+                            load_operand(0));
             pop_operand();
             pop_operand();
             pc += 3;
@@ -1055,7 +1088,6 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             break;
 
         case Bytecode::if_icmpge:
-            // std::cout << load_operand_i(0) << " > " << load_operand_i(1) << std::endl;
             if (load_operand_i(0) < load_operand_i(1)) {
                 pc += ((network_s16*)(bytecode + pc + 1))->get();
             } else {
@@ -1149,7 +1181,7 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
 
         case Bytecode::fconst_0: {
             static_assert(sizeof(float) == sizeof(s32) and
-                          sizeof(void*) >= sizeof(float),
+                              sizeof(void*) >= sizeof(float),
                           "undefined behavior");
             auto f = 0.f;
             push_operand_f(f);
@@ -1159,7 +1191,7 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
 
         case Bytecode::fconst_1: {
             static_assert(sizeof(float) == sizeof(s32) and
-                          sizeof(void*) >= sizeof(float),
+                              sizeof(void*) >= sizeof(float),
                           "undefined behavior");
             auto f = 1.f;
             push_operand_f(f);
@@ -1169,7 +1201,7 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
 
         case Bytecode::fconst_2: {
             static_assert(sizeof(float) == sizeof(s32) and
-                          sizeof(void*) >= sizeof(float),
+                              sizeof(void*) >= sizeof(float),
                           "undefined behavior");
             auto f = 2.f;
             push_operand_f(f);
@@ -1252,7 +1284,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
                 push_operand_i(result);
             } else {
                 puts("array index out of bounds");
-                while (true) ;
+                while (true)
+                    ;
             }
             ++pc;
             break;
@@ -1276,7 +1309,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             } else {
                 // TODO: throw error
                 puts("array index out of bounds!");
-                while (true) ;
+                while (true)
+                    ;
             }
             ++pc;
             break;
@@ -1309,7 +1343,6 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
         case Bytecode::astore_1:
         case Bytecode::istore_1:
             store_local(1, load_operand(0));
-            // printf("store local 1 %p\n", load_operand(0));
             pop_operand();
             ++pc;
             break;
@@ -1341,7 +1374,6 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
         case Bytecode::aload_0:
         case Bytecode::iload_0:
             push_operand_p(load_local(0));
-            // printf("load0 %p\n", load_local(0));
             ++pc;
             break;
 
@@ -1349,7 +1381,6 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
         case Bytecode::aload_1:
         case Bytecode::iload_1:
             push_operand_p(load_local(1));
-            // printf("load1 %p\n", load_local(1));
             ++pc;
             break;
 
@@ -1369,10 +1400,9 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
 
         case Bytecode::iinc:
             store_local(bytecode[pc + 1],
-                        (void*)(intptr_t)
-                        ((int)(intptr_t)(load_local(bytecode[pc + 1])) +
-                         bytecode[pc + 2]));
-            // printf("%d\n", (int)(intptr_t)load_local(1));
+                        (void*)(intptr_t)(
+                            (int)(intptr_t)(load_local(bytecode[pc + 1])) +
+                            bytecode[pc + 2]));
             pc += 3;
             break;
 
@@ -1390,7 +1420,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
                 *array->address(index) = value;
             } else {
                 puts("array index out of bounds");
-                while (true) ;
+                while (true)
+                    ;
             }
             ++pc;
             break;
@@ -1406,7 +1437,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
                 push_operand_i(value);
             } else {
                 puts("array index out of bounds");
-                while (true) ;
+                while (true)
+                    ;
             }
             break;
         }
@@ -1430,7 +1462,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             } else {
                 // TODO: throw error
                 puts("array index out of bounds!");
-                while (true) ;
+                while (true)
+                    ;
             }
             ++pc;
             break;
@@ -1454,7 +1487,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
                 push_operand_i(result);
             } else {
                 puts("array index out of bounds");
-                while (true) ;
+                while (true)
+                    ;
             }
             ++pc;
             break;
@@ -1476,7 +1510,6 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
 
         case Bytecode::lstore: {
             auto val = load_wide_operand_l(0);
-            // std::cout << "lstore " << val << std::endl;
             pop_operand();
             pop_operand();
             store_wide_local(bytecode[pc + 1], &val);
@@ -1495,7 +1528,6 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
 
         case Bytecode::lstore_1: {
             auto val = load_wide_operand_l(0);
-            // std::cout << "lstore1 " << val << std::endl;
             pop_operand();
             pop_operand();
             store_wide_local(1, &val);
@@ -1525,7 +1557,6 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             s64 val;
             load_wide_local(bytecode[pc + 1], &val);
             push_wide_operand_l(val);
-            // std::cout << "lload " << val << std::endl;
             pc += 2;
             break;
         }
@@ -1542,7 +1573,6 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             s64 val;
             load_wide_local(1, &val);
             push_wide_operand_l(val);
-            // std::cout << "lload1 " << val << std::endl;
             ++pc;
             break;
         }
@@ -1571,7 +1601,6 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             pop_operand();
             pop_operand();
             push_wide_operand_l(lhs + rhs);
-            // std::cout << "ladd " << lhs << " + " << rhs << std::endl;
             ++pc;
             break;
         }
@@ -1609,25 +1638,23 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
 
         case Bytecode::invokestatic:
             ++pc;
-            dispatch_method(clz,
-                            ((network_u16*)(bytecode + pc))->get(), true, false);
+            dispatch_method(
+                clz, ((network_u16*)(bytecode + pc))->get(), true, false);
             pc += 2;
             break;
 
         case Bytecode::invokevirtual: {
-            // std::cout << "stack before vcall " << __operand_stack.size() << std::endl;
             ++pc;
-            dispatch_method(clz,
-                            ((network_u16*)(bytecode + pc))->get(), false, false);
-            // std::cout << "stack after vcall " << __operand_stack.size() << std::endl;
+            dispatch_method(
+                clz, ((network_u16*)(bytecode + pc))->get(), false, false);
             pc += 2;
             break;
         }
 
         case Bytecode::invokeinterface: {
             ++pc;
-            dispatch_method(clz,
-                            ((network_u16*)(bytecode + pc))->get(), false, false);
+            dispatch_method(
+                clz, ((network_u16*)(bytecode + pc))->get(), false, false);
             pc += 4;
             break;
         }
@@ -1643,7 +1670,8 @@ void execute_bytecode(Class* clz, const u8* bytecode, const ArgumentInfo& argc)
             for (int i = 0; i < 10; ++i) {
                 std::cout << (int)bytecode[i] << std::endl;
             }
-            while (true) ;
+            while (true)
+                ;
         }
     }
 }
@@ -1672,27 +1700,22 @@ void bootstrap()
         reference_array_class.super_ = obj_class;
     }
 
-    if (auto runtime_class = parse_classfile(Slice::from_c_str("java/lang/Runtime"),
-                                             (const char*)runtime_class_data)) {
+    if (auto runtime_class =
+            parse_classfile(Slice::from_c_str("java/lang/Runtime"),
+                            (const char*)runtime_class_data)) {
 
         runtime = make_instance_impl(runtime_class);
 
         jni::bind_native_method(runtime_class,
                                 Slice::from_c_str("getRuntime"),
                                 Slice::from_c_str("TODO_:)"),
-                                [] {
-                                    push_operand_a(*runtime);
-                                });
+                                [] { push_operand_a(*runtime); });
 
 
         jni::bind_native_method(runtime_class,
                                 Slice::from_c_str("exit"),
                                 Slice::from_c_str("TODO_:)"),
-                                [] {
-                                    std::cout << load_operand_i(0) << std::endl;
-                                    while (1) ;
-                                    exit(load_operand_i(0));
-                                });
+                                [] { exit(load_operand_i(0)); });
     }
 }
 
@@ -1706,7 +1729,7 @@ void start_from_jar(const char* jar_file_bytes, Slice classpath)
 
     if (auto clz = java::jvm::import(classpath)) {
         if (auto entry = clz->load_method("main")) {
-            java::jvm::invoke_method(clz, nullptr, entry, {});
+            java::jvm::invoke_method(clz, nullptr, entry, {}, {});
         }
     } else {
         puts("failed to import main class");
@@ -1721,7 +1744,7 @@ void start_from_classfile(const char* class_file_bytes, Slice classpath)
 
     if (auto clz = parse_classfile(classpath, class_file_bytes)) {
         if (auto entry = clz->load_method("main")) {
-            java::jvm::invoke_method(clz, nullptr, entry, {});
+            java::jvm::invoke_method(clz, nullptr, entry, {}, {});
         }
     } else {
         puts("failed to import main class");
@@ -1730,13 +1753,11 @@ void start_from_classfile(const char* class_file_bytes, Slice classpath)
 
 
 
-}
+} // namespace jvm
 
 
 
-}
-
-
+} // namespace java
 
 
 
@@ -1769,5 +1790,4 @@ int main(int argc, char** argv)
     } else {
         java::jvm::start_from_classfile(str.c_str(), classpath);
     }
-
 }

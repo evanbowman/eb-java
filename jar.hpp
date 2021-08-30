@@ -24,5 +24,5 @@ Slice load_classfile(const char* jar_file_byts, Slice classpath);
 
 
 
-}
-}
+} // namespace jar
+} // namespace java

@@ -17,7 +17,7 @@ struct SubstitutionField {
         b1 = 0, // one byte
         b2 = 1, // two bytes
         b4 = 2, // four bytes
-        b8 = 3,  // eight bytes
+        b8 = 3, // eight bytes
         b_invalid = 4
     };
 
@@ -29,4 +29,4 @@ struct SubstitutionField {
 
 
 
-}
+} // namespace java

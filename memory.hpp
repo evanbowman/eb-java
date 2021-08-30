@@ -21,6 +21,6 @@ void* malloc(u32 bytes);
 
 
 
-}
-}
-}
+} // namespace heap
+} // namespace jvm
+} // namespace java

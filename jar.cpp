@@ -1,7 +1,7 @@
 #include "jar.hpp"
 #include "endian.hpp"
-#include <string.h>
 #include <iostream>
+#include <string.h>
 
 
 
@@ -29,7 +29,7 @@ struct LocalFileHeader {
 };
 
 
-}
+} // namespace zip
 
 
 
@@ -101,5 +101,5 @@ Slice load_classfile(const char* jar_file_bytes, Slice classpath)
 
 
 
-}
-}
+} // namespace jar
+} // namespace java

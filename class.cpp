@@ -15,9 +15,7 @@ const ClassFile::HeaderSection2* Class::interfaces() const
     str += sizeof(ClassFile::HeaderSection1);
 
     for (int i = 0; i < h1->constant_count_.get() - 1; ++i) {
-        str +=
-            ClassFile::constant_size((const ClassFile::ConstantHeader*)
-                                     str);
+        str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
     }
 
     return (ClassFile::HeaderSection2*)str;
@@ -74,12 +72,14 @@ void* Class::get_field(Object* obj, u16 index)
 
     case 8:
         puts("TODO: implement eight byte fields!");
-        while (true) ;
+        while (true)
+            ;
         break;
     }
 
     puts("invalid field configuration");
-    while (true) ;
+    while (true)
+        ;
 }
 
 
@@ -109,7 +109,8 @@ void Class::put_field(Object* obj, u16 index, void* value)
 
     case 8:
         puts("TODO: implement eight byte fields!");
-        while (true) ;
+        while (true)
+            ;
         break;
     }
 
@@ -127,8 +128,8 @@ size_t Class::instance_fields_size()
 
     while (current) {
         if (current->cpool_highest_field_ not_eq -1) {
-            auto sub = (SubstitutionField*)
-                current->constants_->load(current->cpool_highest_field_);
+            auto sub = (SubstitutionField*)current->constants_->load(
+                current->cpool_highest_field_);
 
             return sub->offset_ + (1 << sub->size_);
 
@@ -142,4 +143,4 @@ size_t Class::instance_fields_size()
 
 
 
-}
+} // namespace java
