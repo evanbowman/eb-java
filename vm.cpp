@@ -7,6 +7,8 @@
 #include <vector>
 #include "array.hpp"
 #include "jar.hpp"
+#include "jni.hpp"
+#define INCBIN_PREFIX
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
 #include "incbin.h"
 
@@ -401,7 +403,14 @@ void invoke_method(Class* clz,
             (ClassFile::AttributeInfo*)
             ((const char*)method + sizeof(ClassFile::MethodInfo));
 
-        if (clz->constants_->load_string(attr->attribute_name_index_.get()) ==
+
+        if (attr->attribute_name_index_.get() == jni::magic and
+            attr->attribute_length_.get() == jni::magic) {
+
+            ((jni::MethodStub*)method)->implementation_();
+            return;
+
+        } else if (clz->constants_->load_string(attr->attribute_name_index_.get()) ==
             Slice::from_c_str("Code")) {
 
             auto bytecode =
@@ -438,7 +447,12 @@ Class* load_class(Class* current_module, u16 class_index)
         }
     }
 
-    return import(cname);
+    if (auto clz = import(cname)) {
+        return clz;
+    } else {
+        puts("missing class!");
+        while (true) ;
+    }
 }
 
 
@@ -532,20 +546,26 @@ void* malloc(size_t size)
 
 
 
-Object* make_instance(Class* clz, u16 class_constant)
+Object* make_instance_impl(Class* clz)
 {
-    auto t_clz = load_class(clz, class_constant);
+    const auto fields_size = clz->instance_fields_size();
 
-    if (t_clz) {
+    printf("instance size %ld\n", fields_size);
 
-        const auto fields_size = clz->instance_fields_size();
+    auto mem = (Object*)jvm::malloc(sizeof(Object) + fields_size);
+    new (mem) Object();
+    mem->class_ = clz;
+    return mem;
+}
 
-        printf("instance size %ld\n", fields_size);
 
-        auto mem = (Object*)jvm::malloc(sizeof(Object) + fields_size);
-        new (mem) Object();
-        mem->class_ = t_clz;
-        return mem;
+
+Object* make_instance(Class* current_module, u16 class_constant)
+{
+    auto clz = load_class(current_module, class_constant);
+
+    if (clz) {
+        return make_instance_impl(clz);
     }
 
     // TODO: fatal error...
@@ -1591,7 +1611,11 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
 
 
-INCBIN(object_classfile, "Object.class");
+INCBIN(object_class, "Object.class");
+INCBIN(runtime_class, "Runtime.class");
+
+
+Object* runtime = nullptr;
 
 
 
@@ -1600,13 +1624,36 @@ void bootstrap()
     // NOTE: I manually edited the bytecode in the Object classfile, which is
     // why I do not provide the source code. It's hand-rolled java bytecode.
     if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
-                                         (const char*)gobject_classfile_data)) {
+                                         (const char*)object_class_data)) {
         puts("successfully loaded Object root!");
 
         obj_class->super_ = nullptr;
 
         primitive_array_class.super_ = obj_class;
         reference_array_class.super_ = obj_class;
+    }
+
+    // idk why Runtime isn't on the java/lang/ classpath, but javac doesn't
+    // generate the full path in classfiles, so...
+    if (auto runtime_class = parse_classfile(Slice::from_c_str("Runtime"),
+                                             (const char*)runtime_class_data)) {
+
+        runtime = make_instance_impl(runtime_class);
+
+        jni::bind_native_method(runtime_class,
+                                Slice::from_c_str("getRuntime"),
+                                Slice::from_c_str("TODO_:)"),
+                                [] {
+                                    push_operand_a(*runtime);
+                                });
+
+
+        jni::bind_native_method(runtime_class,
+                                Slice::from_c_str("exit"),
+                                Slice::from_c_str("TODO_:)"),
+                                [] {
+                                    exit(load_operand_i(0));
+                                });
     }
 }
 
