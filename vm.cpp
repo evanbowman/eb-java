@@ -273,6 +273,7 @@ struct Bytecode {
         anewarray       = 0xbd,
         areturn         = 0xb0,
         aconst_null     = 0x01,
+        athrow          = 0xbf,
         checkcast       = 0xc0,
         instanceof      = 0xc1,
         iconst_m1       = 0x02,
@@ -412,7 +413,13 @@ void register_class(Slice name, Class* clz)
 
 
 
-void execute_bytecode(Class* clz, const u8* bytecode);
+using Exception = Object;
+
+
+
+Exception* execute_bytecode(Class* clz,
+                            const u8* bytecode,
+                            const ClassFile::ExceptionTable* exception_table);
 
 
 
@@ -436,7 +443,7 @@ void bind_arguments(Object* self,
     int stack_load_index = argc.operand_count_ - 1;
     if (self) {
         store_local(local_param_index++, self, true);
-        stack_load_index --;
+        stack_load_index--;
     }
 
     const char* str = type_signature.ptr_;
@@ -445,9 +452,8 @@ void bind_arguments(Object* self,
         while (true) {
             switch (str[i]) {
             default:
-                store_local(local_param_index,
-                            load_operand(stack_load_index--),
-                            false);
+                store_local(
+                    local_param_index, load_operand(stack_load_index--), false);
                 ++local_param_index;
                 ++i;
                 break;
@@ -461,9 +467,8 @@ void bind_arguments(Object* self,
                 break;
 
             case 'L':
-                store_local(local_param_index,
-                            load_operand(stack_load_index--),
-                            true);
+                store_local(
+                    local_param_index, load_operand(stack_load_index--), true);
                 ++local_param_index;
                 while (str[i] not_eq ';') {
                     ++i;
@@ -484,11 +489,11 @@ void bind_arguments(Object* self,
 
 
 
-void invoke_method(Class* clz,
-                   Object* self,
-                   const ClassFile::MethodInfo* method,
-                   const ArgumentInfo& argc,
-                   Slice type_signature)
+Exception* invoke_method(Class* clz,
+                         Object* self,
+                         const ClassFile::MethodInfo* method,
+                         const ArgumentInfo& argc,
+                         Slice type_signature)
 {
     for (int i = 0; i < method->attributes_count_.get(); ++i) {
         auto attr = (ClassFile::AttributeInfo*)((const char*)method +
@@ -505,7 +510,7 @@ void invoke_method(Class* clz,
 
             free_locals(argc.operand_count_);
 
-            return;
+            return nullptr;
 
         } else if (clz->constants_->load_string(
                        attr->attribute_name_index_.get()) ==
@@ -513,6 +518,18 @@ void invoke_method(Class* clz,
 
             auto bytecode =
                 ((const u8*)attr) + sizeof(ClassFile::AttributeCode);
+
+            auto exception_table =
+                (const ClassFile::ExceptionTable*)(bytecode +
+                                                   ((ClassFile::AttributeCode*)
+                                                        attr)
+                                                       ->code_length_.get());
+
+
+            std::cout << "exception table count: "
+                      << exception_table->exception_table_length_.get()
+                      << std::endl;
+
 
             const auto local_count =
                 std::max(((ClassFile::AttributeCode*)attr)->max_locals_.get(),
@@ -522,11 +539,17 @@ void invoke_method(Class* clz,
             alloc_locals(local_count);
 
             bind_arguments(self, argc, type_signature);
-            execute_bytecode(clz, bytecode);
+            auto exn = execute_bytecode(clz, bytecode, exception_table);
 
             free_locals(local_count);
+
+            return exn;
         }
     }
+
+    puts("method not found, TODO: throw exception");
+    while (true)
+        ;
 }
 
 
@@ -583,10 +606,10 @@ lookup_method(Class* clz, Slice lhs_name, Slice lhs_type)
 
 
 
-static void dispatch_method(Class* clz,
-                            u16 method_index,
-                            bool direct_dispatch,
-                            bool special)
+static Exception* dispatch_method(Class* clz,
+                                  u16 method_index,
+                                  bool direct_dispatch,
+                                  bool special)
 {
     auto ref =
         (const ClassFile::ConstantRef*)clz->constants_->load(method_index);
@@ -599,6 +622,7 @@ static void dispatch_method(Class* clz,
 
     auto argc = parse_arguments(lhs_type);
 
+    std::cout << std::string(lhs_name.ptr_, lhs_name.length_) << std::endl;
 
     Object* self = nullptr;
     if ((not direct_dispatch) or special) {
@@ -627,7 +651,7 @@ static void dispatch_method(Class* clz,
         if (self) {
             argc.operand_count_ += 1;
         }
-        invoke_method(mtd.second, self, mtd.first, argc, lhs_type);
+        return invoke_method(mtd.second, self, mtd.first, argc, lhs_type);
     } else {
         // TODO: raise error
         puts("method lookup failed!");
@@ -638,9 +662,9 @@ static void dispatch_method(Class* clz,
 
 
 
-void invoke_special(Class* clz, u16 method_index)
+Exception* invoke_special(Class* clz, u16 method_index)
 {
-    dispatch_method(clz, method_index, true, true);
+    return dispatch_method(clz, method_index, true, true);
 }
 
 
@@ -747,10 +771,55 @@ void ldc2(Class* clz, u16 index)
 
 
 
-void execute_bytecode(Class* clz, const u8* bytecode)
+bool instanceof(Object* obj, Class* clz)
 {
-    u32 pc = 0;
+    auto current = obj->class_;
+    while (current) {
+        // FIXME: check for successful cast to implemented interfaces
+        if (current == clz) {
+            return true;
+        }
+        current = current->super_;
+    }
+    return false;
+}
 
+
+
+const ClassFile::ExceptionTableEntry*
+find_exception_handler(Class* clz,
+                       Object* exception,
+                       u32 pc,
+                       const ClassFile::ExceptionTable* exception_table)
+{
+    if (exception_table == nullptr) {
+        return nullptr;
+    }
+
+    for (int i = 0; i < exception_table->exception_table_length_.get(); ++i) {
+        auto& entry = exception_table->entries()[i];
+
+        if (pc >= entry.start_pc_.get() and pc < entry.end_pc_.get()) {
+            auto catch_clz = load_class(clz, entry.catch_type_.get());
+            if (instanceof(exception, catch_clz)) {
+                return &entry;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+
+
+Exception* execute_bytecode(Class* clz,
+                            const u8* bytecode,
+                            const ClassFile::ExceptionTable* exception_table)
+{
+    std::cout << "enter method, stack size: " << __operand_stack.size()
+              << std::endl;
+
+    u32 pc = 0;
 
     while (true) {
         // printf("vm loop %d %x\n", pc, bytecode[pc]);
@@ -770,11 +839,10 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             ++pc;
             break;
 
-        case Bytecode::swap: {
+        case Bytecode::swap:
             swap();
             ++pc;
             break;
-        }
 
         case Bytecode::ldc:
             ldc1(clz, bytecode[pc + 1]);
@@ -908,6 +976,22 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pc += 1;
             break;
 
+        case Bytecode::athrow: {
+            auto exn = (Object*)load_operand(0);
+            pop_operand();
+
+            std::cout << "throw! stack size: " << __operand_stack.size()
+                      << std::endl;
+
+            auto handler = find_exception_handler(clz, exn, pc, exception_table);
+            if (handler) {
+                std::cout << "found local handler..." << std::endl;
+                while (true) ;
+            } else {
+                return exn;
+            }
+        }
+
         case Bytecode::checkcast: {
             auto other =
                 load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
@@ -934,27 +1018,13 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             break;
         }
 
-        case Bytecode:: instanceof: {
+        case Bytecode::instanceof: {
             auto other =
                 load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
             auto obj = (Object*)load_operand(0);
             pop_operand();
             pc += 3;
-
-            auto current = obj->class_;
-            while (current) {
-                // FIXME: check for successful cast to implemented interfaces
-                if (current == other) {
-                    goto FOUND_INSTANCEOF;
-                }
-                current = current->super_;
-            }
-
-            push_operand_i(0);
-            break;
-
-        FOUND_INSTANCEOF:
-            push_operand_i(1);
+            push_operand_i(instanceof(obj, other));
             break;
         }
 
@@ -1010,8 +1080,8 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pop_operand();
 
             bool is_object;
-            auto field = arg->get_field(((network_u16*)&bytecode[pc + 1])->get(),
-                                        is_object);
+            auto field = arg->get_field(
+                ((network_u16*)&bytecode[pc + 1])->get(), is_object);
 
             if (is_object) {
                 push_operand_a(*(Object*)field);
@@ -1727,38 +1797,68 @@ void execute_bytecode(Class* clz, const u8* bytecode)
         case Bytecode::ireturn:
         case Bytecode::areturn:
         case Bytecode::freturn:
-            // At the moment, we simply leave the argument on the operand stack,
-            // so we don't really care what type we're returning.
-            return;
+            return nullptr;
 
-        case Bytecode::invokestatic:
+        case Bytecode::invokestatic: {
             ++pc;
-            dispatch_method(
+            auto exn = dispatch_method(
                 clz, ((network_u16*)(bytecode + pc))->get(), true, false);
+            if (exn) {
+                puts("invocation generated an exception, TODO");
+                while (true)
+                    ;
+            }
             pc += 2;
             break;
+        }
 
         case Bytecode::invokevirtual: {
             ++pc;
-            dispatch_method(
+            auto exn = dispatch_method(
                 clz, ((network_u16*)(bytecode + pc))->get(), false, false);
+            if (exn) {
+                auto handler = find_exception_handler(clz, exn, pc, exception_table);
+                if (handler) {
+                    // Subsequent bytecode will expect to be able to load the
+                    // exception object into a local variable, so push it onto
+                    // the stack.
+                    push_operand_a(*(Object*)exn);
+                    pc = handler->handler_pc_.get();
+                    break;
+
+                } else {
+                    return exn;
+                }
+            }
             pc += 2;
             break;
         }
 
         case Bytecode::invokeinterface: {
             ++pc;
-            dispatch_method(
+            auto exn = dispatch_method(
                 clz, ((network_u16*)(bytecode + pc))->get(), false, false);
+            if (exn) {
+                puts("invocation generated an exception, TODO");
+                while (true)
+                    ;
+            }
             pc += 4;
             break;
         }
 
-        case Bytecode::invokespecial:
+        case Bytecode::invokespecial: {
             ++pc;
-            invoke_special(clz, ((network_u16*)(bytecode + pc))->get());
+            auto exn =
+                invoke_special(clz, ((network_u16*)(bytecode + pc))->get());
+            if (exn) {
+                puts("invocation generated an exception, TODO");
+                while (true)
+                    ;
+            }
             pc += 2;
             break;
+        }
 
         default:
             printf("unrecognized bytecode instruction %#02x\n", bytecode[pc]);
@@ -1775,6 +1875,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
 INCBIN(object_class, "Object.class");
 INCBIN(runtime_class, "Runtime.class");
+INCBIN(throwable_class, "Throwable.class");
 
 
 Object* runtime = nullptr;
@@ -1804,17 +1905,13 @@ void bootstrap()
         jni::bind_native_method(runtime_class,
                                 Slice::from_c_str("getRuntime"),
                                 Slice::from_c_str("TODO_:)"),
-                                [] {
-                                    push_operand_a(*runtime);
-                                });
+                                [] { push_operand_a(*runtime); });
 
 
         jni::bind_native_method(runtime_class,
                                 Slice::from_c_str("exit"),
                                 Slice::from_c_str("TODO_:)"),
-                                [] {
-                                    exit((intptr_t)load_local(1));
-                                });
+                                [] { exit((intptr_t)load_local(1)); });
 
 
         jni::bind_native_method(runtime_class,
@@ -1822,8 +1919,14 @@ void bootstrap()
                                 Slice::from_c_str("TODO_:)"),
                                 [] {
                                     puts("TODO: gc");
-                                    while (true) ;
+                                    while (true)
+                                        ;
                                 });
+    }
+
+    if (parse_classfile(Slice::from_c_str("java/lang/Throwable"),
+                        (const char*)throwable_class_data)) {
+        puts("loaded throwable");
     }
 }
 

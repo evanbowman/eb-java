@@ -107,7 +107,8 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
 
                 if (field->access_flags_.get() & 0x08) {
                     puts("TODO: implement static fields");
-                    while (true) ;
+                    while (true)
+                        ;
                 }
 
                 auto field_type = clz->constants_->load_string(
@@ -130,10 +131,12 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
                     field_size = SubstitutionField::b1;
                 } else if (field_type == Slice::from_c_str("J")) {
                     puts("TODO: implement long fields");
-                    while (true) ;
+                    while (true)
+                        ;
                 } else if (field_type == Slice::from_c_str("D")) {
                     puts("TODO: implement doule fields");
-                    while (true) ;
+                    while (true)
+                        ;
                 } else if (field_type.ptr_[0] == 'L') {
                     // We use a special size enumeration for objects, not
                     // because we cannot figure out how large a pointer is on

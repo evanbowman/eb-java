@@ -65,7 +65,24 @@ struct ClassFile {
         network_u16 max_locals_;
         network_u32 code_length_;
         // u8 bytecode[code_length_];
-        // __exception_table
+        // ExceptionTable exn_;
+    };
+
+    struct ExceptionTableEntry {
+        network_u16 start_pc_;
+        network_u16 end_pc_;
+        network_u16 handler_pc_;
+        network_u16 catch_type_;
+    };
+
+    struct ExceptionTable {
+        network_u16 exception_table_length_;
+        // ExceptionTableEntry table_[exception_table_length_];
+
+        const ExceptionTableEntry* entries() const
+        {
+            return (const ExceptionTableEntry*)(((const u8*)this) + sizeof(ExceptionTable));
+        }
     };
 
     struct AttributeSourceFile {
