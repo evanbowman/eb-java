@@ -47,9 +47,9 @@ std::vector<void*> __operand_stack;
 std::vector<void*> __locals;
 
 
-
 void store_local(int index, void* value)
 {
+    // std::cout << "write to local " << index << ": " << value << std::endl;
     __locals[(__locals.size() - 1) - index] = value;
 }
 
@@ -57,6 +57,31 @@ void store_local(int index, void* value)
 void* load_local(int index)
 {
     return __locals[(__locals.size() - 1) - index];
+}
+
+
+void store_wide_local(int index, void* value)
+{
+    s32* words = (s32*)value;
+
+    // std::cout << "swl " << index << ": " << words[0] << " " << words[1] << std::endl;
+
+    store_local(index, (void*)(intptr_t)words[0]);
+    store_local(index + 1, (void*)(intptr_t)words[1]);
+
+}
+
+
+void load_wide_local(int index, void* result)
+{
+    s32* words = (s32*)result;
+
+    // std::cout << load_local(index) << ", " << load_local(index + 1) << std::endl;
+
+    words[0] = (s32)(intptr_t)load_local(index);
+    words[1] = (s32)(intptr_t)load_local(index + 1);
+
+    // std::cout << "lwl " << index << ": " << words[0] << " " << words[1] << std::endl;
 }
 
 
@@ -142,7 +167,7 @@ void push_wide_operand(void* value)
 }
 
 
-void push_wide_operand_l(u64 value)
+void push_wide_operand_l(s64 value)
 {
     push_wide_operand((void*)&value);
 }
@@ -154,12 +179,12 @@ void push_wide_operand_d(double value)
 }
 
 
-s64 load_wide_operand_l()
+s64 load_wide_operand_l(int offset)
 {
     s64 result;
     s32* words = (s32*)&result;
-    words[1] = load_operand_i(0);
-    words[0] = load_operand_i(1);
+    words[1] = load_operand_i(offset);
+    words[0] = load_operand_i(offset + 1);
     return result;
 }
 
@@ -170,12 +195,12 @@ double __load_wide_operand_d_impl(void* ptr)
 }
 
 
-double load_wide_operand_d()
+double load_wide_operand_d(int offset)
 {
     static_assert(sizeof(double) == sizeof(u64),
                   "is this even remotely necessary?");
 
-    auto mem = load_wide_operand_l();
+    auto mem = load_wide_operand_l(offset);
     return __load_wide_operand_d_impl(&mem);
 }
 
@@ -255,8 +280,21 @@ struct Bytecode {
         iinc            = 0x84,
         iastore         = 0x4f,
         iaload          = 0x2e,
+        lstore          = 0x37,
+        lstore_0        = 0x3f,
+        lstore_1        = 0x40,
+        lstore_2        = 0x41,
+        lstore_3        = 0x42,
+        lload           = 0x16,
+        lload_0         = 0x1e,
+        lload_1         = 0x1f,
+        lload_2         = 0x20,
+        lload_3         = 0x21,
+        ladd            = 0x61,
+        land            = 0x7f,
         lconst_0        = 0x09,
         lconst_1        = 0x0a,
+        lreturn         = 0xad,
         if_acmpeq       = 0xa5,
         if_acmpne       = 0xa6,
         if_icmpeq       = 0x9f,
@@ -543,10 +581,35 @@ void ldc1(Class* clz, u16 index)
 
 
 
+static void __push_double_from_aligned_bytevector(void* d)
+{
+    push_wide_operand_d(*(double*)d);
+}
+
+
+
 void ldc2(Class* clz, u16 index)
 {
-    puts("TODO: ldc2_w");
-    while (true) ;
+    auto c = clz->constants_->load(index);
+    switch (c->tag_) {
+    case ClassFile::ConstantType::t_double: {
+        auto cdbl = (ClassFile::ConstantDouble*)c;
+        u64 val{cdbl->value_.get()};
+        __push_double_from_aligned_bytevector(&val);
+        break;
+    }
+
+    case ClassFile::ConstantType::t_long: {
+        auto clong = (ClassFile::ConstantLong*)c;
+        push_wide_operand_l(clong->value_.get());
+        break;
+    }
+
+    default:
+        puts("invalid ldc...");
+        while (true) ;
+        break;
+    }
 }
 
 
@@ -1349,14 +1412,116 @@ void execute_bytecode(Class* clz, const u8* bytecode)
 
         case Bytecode::lconst_0: {
             s64 value = 0;
-            push_wide_operand(&value);
+            push_wide_operand_l(value);
             ++pc;
             break;
         }
 
         case Bytecode::lconst_1: {
             s64 value = 1;
-            push_wide_operand(&value);
+            push_wide_operand_l(value);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lstore: {
+            auto val = load_wide_operand_l(0);
+            // std::cout << "lstore " << val << std::endl;
+            pop_operand();
+            pop_operand();
+            store_wide_local(bytecode[pc + 1], &val);
+            pc += 2;
+            break;
+        }
+
+        case Bytecode::lstore_0: {
+            auto val = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            store_wide_local(0, &val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lstore_1: {
+            auto val = load_wide_operand_l(0);
+            // std::cout << "lstore1 " << val << std::endl;
+            pop_operand();
+            pop_operand();
+            store_wide_local(1, &val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lstore_2: {
+            auto val = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            store_wide_local(2, &val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lstore_3: {
+            auto val = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            store_wide_local(3, &val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lload: {
+            s64 val;
+            load_wide_local(bytecode[pc + 1], &val);
+            push_wide_operand_l(val);
+            // std::cout << "lload " << val << std::endl;
+            pc += 2;
+            break;
+        }
+
+        case Bytecode::lload_0: {
+            s64 val;
+            load_wide_local(0, &val);
+            push_wide_operand_l(val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lload_1: {
+            s64 val;
+            load_wide_local(1, &val);
+            push_wide_operand_l(val);
+            // std::cout << "lload1 " << val << std::endl;
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lload_2: {
+            s64 val;
+            load_wide_local(2, &val);
+            push_wide_operand_l(val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lload_3: {
+            s64 val;
+            load_wide_local(3, &val);
+            push_wide_operand_l(val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::ladd: {
+            auto lhs = load_wide_operand_l(0);
+            auto rhs = load_wide_operand_l(2);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(lhs + rhs);
+            std::cout << "ladd " << lhs << " + " << rhs << std::endl;
             ++pc;
             break;
         }
@@ -1369,6 +1534,7 @@ void execute_bytecode(Class* clz, const u8* bytecode)
             pc += ((network_s32*)(bytecode + pc + 1))->get();
             break;
 
+        case Bytecode::lreturn:
         case Bytecode::areturn:
         case Bytecode::freturn:
         case Bytecode::vreturn:

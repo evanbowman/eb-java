@@ -72,9 +72,15 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
             classfile += sizeof(ClassFile::HeaderSection1);
 
             for (int i = 0; i < h1->constant_count_.get() - 1; ++i) {
-                classfile +=
-                    ClassFile::constant_size((const ClassFile::ConstantHeader*)
-                                             classfile);
+                auto c = (const ClassFile::ConstantHeader*)classfile;
+                if (c->tag_ == ClassFile::t_double or
+                    c->tag_ == ClassFile::t_long) {
+                    // Not sure who's bright idea this was... wish I could get
+                    // into a time machine and ask the people at Sun about
+                    // this...
+                    ++i;
+                }
+                classfile += ClassFile::constant_size(c);
             }
 
             // Ok, now we've skipped over the first part of the classfile (the
@@ -157,9 +163,12 @@ const char* parse_classfile_fields(const char* str,
             ((const char*)&h1) + sizeof(ClassFile::HeaderSection1);
 
         for (int i = 0; i < h1.constant_count_.get() - 1; ++i) {
-            auto hdr = (const ClassFile::ConstantHeader*)str;
-            if (hdr->tag_ == ClassFile::t_field_ref) {
+            auto c = (const ClassFile::ConstantHeader*)str;
+            if (c->tag_ == ClassFile::t_field_ref) {
                 ++nfields;
+            } else if (c->tag_ == ClassFile::t_double or
+                       c->tag_ == ClassFile::t_long) {
+                ++i;
             }
             str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
         }
@@ -190,7 +199,6 @@ const char* parse_classfile_fields(const char* str,
                         if (clz->cpool_highest_field_ not_eq -1) {
                             auto prev = (SubstitutionField*)
                                 clz->constants_->load(clz->cpool_highest_field_);
-                            std::cout << i << std::endl;
                             if (field.offset_ > prev->offset_) {
                                 clz->cpool_highest_field_ = i + 1;
                             }
@@ -199,6 +207,9 @@ const char* parse_classfile_fields(const char* str,
                         }
                     }
                 }
+            } else if (hdr->tag_ == ClassFile::t_double or
+                       hdr->tag_ == ClassFile::t_long) {
+                ++i;
             }
 
             str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);

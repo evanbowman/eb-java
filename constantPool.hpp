@@ -4,6 +4,7 @@
 #include "slice.hpp"
 #include <stdio.h>
 #include "substitutionField.hpp"
+#include <iostream>
 
 
 // NOTE: Creating a constant pool in memory for every class takes up a lot of
@@ -107,8 +108,14 @@ public:
         auto str = (const char*)info_ + sizeof(ClassFile::HeaderSection1);
 
         int i = 0;
+
         while (i not_eq index) {
-            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+            auto c = (const ClassFile::ConstantHeader*)str;
+            if (c->tag_ == ClassFile::t_double or
+                c->tag_ == ClassFile::t_long) {
+                ++i;
+            }
+            str += ClassFile::constant_size(c);
             ++i;
         }
 
@@ -119,12 +126,21 @@ public:
     const char* parse(const ClassFile::HeaderSection1& src) override
     {
         info_ = &src;
-
         const char* str =
             ((const char*)&src) + sizeof(ClassFile::HeaderSection1);
 
         for (int i = 0; i < src.constant_count_.get() - 1; ++i) {
-            str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+            auto c = (const ClassFile::ConstantHeader*)str;
+
+            std::cout << "parse constant " << i + 1 << " when building cpool, type "
+                      << (int)*str << std::endl;
+
+            str += ClassFile::constant_size(c);
+
+            if (c->tag_ == ClassFile::t_double or
+                c->tag_ == ClassFile::t_long) {
+                ++i;
+            }
         }
 
         return str;

@@ -10,6 +10,10 @@ namespace java {
 
 const char* ConstantPoolArrayImpl::parse(const ClassFile::HeaderSection1& src)
 {
+    // FIXME: this dead code does not account for double/long taking up two
+    // spaces in the constant pool. needs to be fixed for if/when we resurrect
+    // this stuff.
+
     array_ = (const ClassFile::ConstantHeader**)
         jvm::malloc(sizeof(ClassFile::ConstantHeader*) *
                     src.constant_count_.get() - 1);

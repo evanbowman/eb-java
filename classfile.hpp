@@ -126,14 +126,12 @@ struct ClassFile {
 
     struct ConstantLong {
         ConstantHeader header_;
-        network_u32 high_bytes_;
-        network_u32 low_bytes_;
+        network_s64 value_;
     };
 
     struct ConstantDouble {
         ConstantHeader header_;
-        network_u32 high_bytes_;
-        network_u32 low_bytes_;
+        network_u64 value_;
     };
 
     struct ConstantNameAndType {
