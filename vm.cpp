@@ -771,7 +771,7 @@ void ldc2(Class* clz, u16 index)
 
 
 
-bool instanceof (Object * obj, Class* clz)
+bool instanceof(Object* obj, Class* clz)
 {
     auto current = obj->class_;
     while (current) {
@@ -801,13 +801,35 @@ find_exception_handler(Class* clz,
 
         if (pc >= entry.start_pc_.get() and pc < entry.end_pc_.get()) {
             auto catch_clz = load_class(clz, entry.catch_type_.get());
-            if (instanceof (exception, catch_clz)) {
+            if (instanceof(exception, catch_clz)) {
                 return &entry;
             }
         }
     }
 
     return nullptr;
+}
+
+
+
+bool handle_exception(Class* clz,
+                      Exception* exn,
+                      u32& pc,
+                      const ClassFile::ExceptionTable* exception_table)
+{
+    auto handler =
+        find_exception_handler(clz, exn, pc, exception_table);
+    if (handler) {
+        // Subsequent bytecode will expect to be able to load the
+        // exception object into a local variable, so push it onto
+        // the stack.
+        push_operand_a(*(Object*)exn);
+        pc = handler->handler_pc_.get();
+        return true;
+
+    } else {
+        return false;
+    }
 }
 
 
@@ -980,18 +1002,10 @@ Exception* execute_bytecode(Class* clz,
             auto exn = (Object*)load_operand(0);
             pop_operand();
 
-            std::cout << "throw! stack size: " << __operand_stack.size()
-                      << std::endl;
-
-            auto handler =
-                find_exception_handler(clz, exn, pc, exception_table);
-            if (handler) {
-                std::cout << "found local handler..." << std::endl;
-                while (true)
-                    ;
-            } else {
+            if (not handle_exception(clz, exn, pc, exception_table)) {
                 return exn;
             }
+            break;
         }
 
         case Bytecode::checkcast: {
@@ -1020,13 +1034,13 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
-        case Bytecode:: instanceof: {
+        case Bytecode::instanceof: {
             auto other =
                 load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
             auto obj = (Object*)load_operand(0);
             pop_operand();
             pc += 3;
-            push_operand_i(instanceof (obj, other));
+            push_operand_i(instanceof(obj, other));
             break;
         }
 
@@ -1802,64 +1816,54 @@ Exception* execute_bytecode(Class* clz,
             return nullptr;
 
         case Bytecode::invokestatic: {
-            ++pc;
             auto exn = dispatch_method(
-                clz, ((network_u16*)(bytecode + pc))->get(), true, false);
+                clz, ((network_u16*)(bytecode + pc + 1))->get(), true, false);
             if (exn) {
-                puts("invocation generated an exception, TODO");
-                while (true)
-                    ;
+                if (not handle_exception(clz, exn, pc, exception_table)) {
+                    return exn;
+                }
+            } else {
+                pc += 3;
             }
-            pc += 2;
             break;
         }
 
         case Bytecode::invokevirtual: {
-            ++pc;
             auto exn = dispatch_method(
-                clz, ((network_u16*)(bytecode + pc))->get(), false, false);
+                clz, ((network_u16*)(bytecode + pc + 1))->get(), false, false);
             if (exn) {
-                auto handler =
-                    find_exception_handler(clz, exn, pc, exception_table);
-                if (handler) {
-                    // Subsequent bytecode will expect to be able to load the
-                    // exception object into a local variable, so push it onto
-                    // the stack.
-                    push_operand_a(*(Object*)exn);
-                    pc = handler->handler_pc_.get();
-                    break;
-
-                } else {
+                if (not handle_exception(clz, exn, pc, exception_table)) {
                     return exn;
                 }
+            } else {
+                pc += 3;
             }
-            pc += 2;
             break;
         }
 
         case Bytecode::invokeinterface: {
-            ++pc;
             auto exn = dispatch_method(
-                clz, ((network_u16*)(bytecode + pc))->get(), false, false);
+                clz, ((network_u16*)(bytecode + pc + 1))->get(), false, false);
             if (exn) {
-                puts("invocation generated an exception, TODO");
-                while (true)
-                    ;
+                if (not handle_exception(clz, exn, pc, exception_table)) {
+                    return exn;
+                }
+            } else {
+                pc += 5;
             }
-            pc += 4;
             break;
         }
 
         case Bytecode::invokespecial: {
-            ++pc;
             auto exn =
-                invoke_special(clz, ((network_u16*)(bytecode + pc))->get());
+                invoke_special(clz, ((network_u16*)(bytecode + pc + 1))->get());
             if (exn) {
-                puts("invocation generated an exception, TODO");
-                while (true)
-                    ;
+                if (not handle_exception(clz, exn, pc, exception_table)) {
+                    return exn;
+                }
+            } else {
+                pc += 3;
             }
-            pc += 2;
             break;
         }
 
