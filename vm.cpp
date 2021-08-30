@@ -11,6 +11,7 @@
 #define INCBIN_PREFIX
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
 #include "incbin.h"
+#include "memory.hpp"
 
 
 
@@ -525,12 +526,6 @@ Exception* invoke_method(Class* clz,
                                                         attr)
                                                        ->code_length_.get());
 
-
-            std::cout << "exception table count: "
-                      << exception_table->exception_table_length_.get()
-                      << std::endl;
-
-
             const auto local_count =
                 std::max(((ClassFile::AttributeCode*)attr)->max_locals_.get(),
                          (u16)4); // Why a min of four? istore_0-3, so there
@@ -622,8 +617,6 @@ static Exception* dispatch_method(Class* clz,
 
     auto argc = parse_arguments(lhs_type);
 
-    std::cout << std::string(lhs_name.ptr_, lhs_name.length_) << std::endl;
-
     Object* self = nullptr;
     if ((not direct_dispatch) or special) {
         self = (Object*)load_operand(argc.operand_count_);
@@ -685,7 +678,11 @@ Object* make_instance_impl(Class* clz)
 
     printf("instance size %ld\n", fields_size);
 
-    auto mem = (Object*)jvm::malloc(sizeof(Object) + fields_size);
+    auto mem = (Object*)heap::allocate(sizeof(Object) + fields_size);
+    if (mem == nullptr) {
+        puts("oom");
+        while (true) ;
+    }
     new (mem) Object();
     mem->class_ = clz;
     return mem;
@@ -838,9 +835,6 @@ Exception* execute_bytecode(Class* clz,
                             const u8* bytecode,
                             const ClassFile::ExceptionTable* exception_table)
 {
-    std::cout << "enter method, stack size: " << __operand_stack.size()
-              << std::endl;
-
     u32 pc = 0;
 
     while (true) {
@@ -1891,6 +1885,9 @@ Object* runtime = nullptr;
 
 void bootstrap()
 {
+    heap::init(4096);
+
+
     // NOTE: I manually edited the bytecode in the Object classfile, which is
     // why I do not provide the source code. It's hand-rolled java bytecode.
     if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
@@ -1947,7 +1944,10 @@ void start_from_jar(const char* jar_file_bytes, Slice classpath)
 
     if (auto clz = java::jvm::import(classpath)) {
         if (auto entry = clz->load_method("main")) {
-            java::jvm::invoke_method(clz, nullptr, entry, {}, {});
+            auto exn = java::jvm::invoke_method(clz, nullptr, entry, {}, {});
+            if (exn) {
+                puts("uncaught exception from main method");
+            }
         }
     } else {
         puts("failed to import main class");
@@ -1962,7 +1962,10 @@ void start_from_classfile(const char* class_file_bytes, Slice classpath)
 
     if (auto clz = parse_classfile(classpath, class_file_bytes)) {
         if (auto entry = clz->load_method("main")) {
-            java::jvm::invoke_method(clz, nullptr, entry, {}, {});
+            auto exn = java::jvm::invoke_method(clz, nullptr, entry, {}, {});
+            if (exn) {
+                puts("uncaught exception from main method");
+            }
         }
     } else {
         puts("failed to import main class");

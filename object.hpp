@@ -10,7 +10,12 @@ namespace java {
 
 struct Object {
     Class* class_;
-    u32 flags_;
+
+    struct {
+        u32 mark_bit_ : 1;
+        u32 reserved_ : 31;
+    } flags_;
+
 
     // After the object header, all the fields will be packed into the end of
     // the object, such that there are no gaps between fields.

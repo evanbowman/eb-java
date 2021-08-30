@@ -8,9 +8,30 @@ namespace jvm {
 namespace heap {
 
 
+
+inline void* align(size_t __align,
+                   size_t __size,
+                   void*& __ptr,
+                   size_t& __space) noexcept
+{
+    const auto __intptr = reinterpret_cast<uintptr_t>(__ptr);
+    const auto __aligned = (__intptr - 1u + __align) & -__align;
+    const auto __diff = __aligned - __intptr;
+    if ((__size + __diff) > __space)
+        return nullptr;
+    else {
+        __space -= __diff;
+        return __ptr = reinterpret_cast<void*>(__aligned);
+    }
+}
+
+
+
+
 static u8* heap_begin;
 static u8* heap_end;
-static u8* heap_alloc;
+static void* heap_alloc;
+
 
 
 void init(u32 heap_size)
@@ -23,24 +44,20 @@ void init(u32 heap_size)
 
 
 
-void* object_malloc(u32 bytes)
+Object* allocate(size_t size)
 {
-    return ::malloc(bytes);
-}
+    std::size_t total_heap = heap_end - (u8*)heap_alloc;
 
-
-
-// We're storing both Java objects and JVM datastructures within the same
-// contiguous allocation. We need to be able to tell them apart.
-struct AllocationHeader {
-    void* class_;
-};
-
-
-
-void* malloc(u32 bytes)
-{
-    return ::malloc(bytes);
+    if (align(alignof(Object), size, heap_alloc, total_heap)) {
+        printf("heap allocate instance %p, inst size %zu, remaining %zu\n",
+               heap_alloc,
+               size,
+               total_heap - size);
+        auto result = heap_alloc;
+        heap_alloc = (u8*)heap_alloc + size;
+        return (Object*)result;
+    }
+    return nullptr;
 }
 
 

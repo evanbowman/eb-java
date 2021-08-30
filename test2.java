@@ -33,15 +33,11 @@ class Test2 {
                 try {
                     ((Test2)t2.test).foo(0, 1, 0, 2);
                 } catch (Throwable t) {
-                    Runtime.getRuntime().exit(1);
+                    Runtime.getRuntime().exit(0);
                 }
             } catch (Throwable t) {
-                while (true) {
-                    // ...
-                }
+                Runtime.getRuntime().exit(1);
             }
-
-
 
             test += test3;
         }
