@@ -14,9 +14,16 @@ struct Slice {
     size_t length_ = 0;
 
 
+    Slice(const char* ptr, size_t length) :
+        ptr_(ptr),
+        length_(length)
+    {
+    }
+
+
     static Slice from_c_str(const char* c_str)
     {
-        return {c_str, strlen(c_str)};
+        return Slice(c_str, strlen(c_str));
     }
 
 

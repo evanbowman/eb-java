@@ -23,9 +23,6 @@ struct MethodStub {
 
 
 
-// The simplest way to bind a C++ function to a native method. Technically, if
-// you knew all of the classfile offsets, you could built the method stub
-// yourself, thus avoiding a malloc.
 void bind_native_method(Class* clz,
                         Slice method_name,
                         Slice method_type_signature,

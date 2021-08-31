@@ -20,7 +20,7 @@ struct Class {
 
     const ClassFile::MethodInfo** methods_ = nullptr;
     Class* super_ = nullptr;
-    const char* classfile_data_;
+    const char* classfile_data_ = nullptr;
 
     // We keep track of the highest index of SubstitutionField in our class
     // instance. In doing so, we know how large class instances need to be.

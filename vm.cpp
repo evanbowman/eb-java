@@ -24,19 +24,13 @@ static const char* jar_file_data;
 
 
 
-static Class primitive_array_class{
-    nullptr, // constants
-    nullptr, // methods
-    nullptr, // super (will be filled in with Object by the bootstrap code)
-    nullptr, // classfile data
-    -1,      // cpool_highest_field
-    0,       // method count
-};
+static Class primitive_array_class;
+
 
 
 // We make the distinction between primitive arrays and reference arrays,
 // because later on, we will need to track gc roots.
-static Class reference_array_class{nullptr, nullptr, nullptr, nullptr, -1, 0};
+static Class reference_array_class;
 
 
 // TODO: maintain a secondary bitvector, where we can keep track of whether an
@@ -493,8 +487,8 @@ void bind_arguments(Object* self,
 Exception* invoke_method(Class* clz,
                          Object* self,
                          const ClassFile::MethodInfo* method,
-                         const ArgumentInfo& argc,
-                         Slice type_signature)
+                         const ArgumentInfo& argc = ArgumentInfo{},
+                         Slice type_signature = Slice(nullptr, 0))
 {
     for (int i = 0; i < method->attributes_count_.get(); ++i) {
         auto attr = (ClassFile::AttributeInfo*)((const char*)method +
@@ -666,7 +660,7 @@ Object* make_instance_impl(Class* clz)
 {
     const auto fields_size = clz->instance_fields_size();
 
-    printf("instance size %ld\n", fields_size);
+    // printf("instance size %ld\n", fields_size);
 
     auto mem = (Object*)heap::allocate(sizeof(Object) + fields_size);
     if (mem == nullptr) {
@@ -877,8 +871,16 @@ Exception* execute_bytecode(Class* clz,
             break;
 
         case Bytecode::anewarray: {
-            auto array = Array::create(load_operand_i(0), sizeof(Object*));
+            auto len = load_operand_i(0);
             pop_operand();
+
+            auto array = Array::create(len, sizeof(Object*));
+            
+            if (array == nullptr) {
+                puts("TODO: ran out of memory, TODO: throw oom");
+                while (true) ;
+            }
+            
             array->object_.class_ = &reference_array_class;
             push_operand_a(*(Object*)array);
             pc += 3;
@@ -886,6 +888,9 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::newarray: {
+            const int element_count = load_operand_i(0);
+            pop_operand();
+
             int element_size = 4;
             switch (bytecode[pc + 1]) {
             case 4:
@@ -908,9 +913,6 @@ Exception* execute_bytecode(Class* clz,
                 element_size = 8;
                 break;
             }
-
-            const int element_count = load_operand_i(0);
-            pop_operand();
 
             auto array = Array::create(element_count, element_size);
 
@@ -1875,9 +1877,6 @@ Object* runtime = nullptr;
 
 void bootstrap()
 {
-    heap::init(4096);
-    classmemory::init(4096);
-
     // NOTE: I manually edited the bytecode in the Object classfile, which is
     // why I do not provide the source code. It's hand-rolled java bytecode.
     if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
@@ -1934,7 +1933,7 @@ void start_from_jar(const char* jar_file_bytes, Slice classpath)
 
     if (auto clz = java::jvm::import(classpath)) {
         if (auto entry = clz->load_method("main")) {
-            auto exn = java::jvm::invoke_method(clz, nullptr, entry, {}, {});
+            auto exn = java::jvm::invoke_method(clz, nullptr, entry);
             if (exn) {
                 puts("uncaught exception from main method");
             }
@@ -1952,7 +1951,7 @@ void start_from_classfile(const char* class_file_bytes, Slice classpath)
 
     if (auto clz = parse_classfile(classpath, class_file_bytes)) {
         if (auto entry = clz->load_method("main")) {
-            auto exn = java::jvm::invoke_method(clz, nullptr, entry, {}, {});
+            auto exn = java::jvm::invoke_method(clz, nullptr, entry);
             if (exn) {
                 puts("uncaught exception from main method");
             }

@@ -38,7 +38,6 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
     //           << std::string(local_field_type.ptr_, local_field_type.length_)
     //           << std::endl;
 
-
     // Ok, so we're given a refrence to a field in an arbitrary class. To
     // determine the byte offset of the field within an instance of said class,
     // we begin by loading the class itself.
@@ -297,7 +296,6 @@ Class* parse_classfile(Slice classname, const char* str)
     clz->constants_ = new ConstantPoolCompactImpl();
     str = clz->constants_->parse(*h1);
 
-
     auto h2 = reinterpret_cast<const ClassFile::HeaderSection2*>(str);
     str += sizeof(ClassFile::HeaderSection2);
 
@@ -334,10 +332,8 @@ Class* parse_classfile(Slice classname, const char* str)
         clz->method_count_ = h4->methods_count_.get();
 
         for (int i = 0; i < h4->methods_count_.get(); ++i) {
-
             auto method = (ClassFile::MethodInfo*)str;
-            str += sizeof(ClassFile::MethodInfo*);
-
+            str += sizeof(ClassFile::MethodInfo);
             clz->methods_[i] = method;
 
             for (int i = 0; i < method->attributes_count_.get(); ++i) {
@@ -347,7 +343,6 @@ Class* parse_classfile(Slice classname, const char* str)
             }
         }
     }
-
 
     auto h5 = reinterpret_cast<const ClassFile::HeaderSection5*>(str);
     str += sizeof(ClassFile::HeaderSection5);

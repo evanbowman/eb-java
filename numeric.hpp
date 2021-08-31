@@ -47,12 +47,12 @@ template <typename T> T abs(const T& val)
 }
 
 
-// When you don't need an exact value, this works as a fast distance
-// approximation.
-template <typename T> T manhattan_length(const Vec2<T>& a, const Vec2<T>& b)
-{
-    return abs(a.x - b.x) + abs(a.y - b.y);
-}
+// // When you don't need an exact value, this works as a fast distance
+// // approximation.
+// template <typename T> T manhattan_length(const Vec2<T>& a, const Vec2<T>& b)
+// {
+//     return abs(a.x - b.x) + abs(a.y - b.y);
+// }
 
 
 using Degree = u16;
@@ -78,107 +78,107 @@ inline Float sqrt_approx(const Float x)
     return x * u.x * (1.5f - xhalf * u.x * u.x);
 }
 
-template <typename T> Vec2<T> operator+(const Vec2<T>& lhs, const Vec2<T>& rhs)
-{
-    return {lhs.x + rhs.x, lhs.y + rhs.y};
-}
+// template <typename T> Vec2<T> operator+(const Vec2<T>& lhs, const Vec2<T>& rhs)
+// {
+//     return {lhs.x + rhs.x, lhs.y + rhs.y};
+// }
 
-template <typename T> Vec2<T> operator-(const Vec2<T>& lhs, const Vec2<T>& rhs)
-{
-    return {lhs.x - rhs.x, lhs.y - rhs.y};
-}
+// template <typename T> Vec2<T> operator-(const Vec2<T>& lhs, const Vec2<T>& rhs)
+// {
+//     return {lhs.x - rhs.x, lhs.y - rhs.y};
+// }
 
-template <typename T> Vec2<T> operator*(const Vec2<T>& lhs, const Vec2<T>& rhs)
-{
-    return {lhs.x * rhs.x, lhs.y * rhs.y};
-}
+// template <typename T> Vec2<T> operator*(const Vec2<T>& lhs, const Vec2<T>& rhs)
+// {
+//     return {lhs.x * rhs.x, lhs.y * rhs.y};
+// }
 
-template <typename T> Vec2<T> operator/(const Vec2<T>& lhs, const Vec2<T>& rhs)
-{
-    return {lhs.x / rhs.x, lhs.y / rhs.y};
-}
+// template <typename T> Vec2<T> operator/(const Vec2<T>& lhs, const Vec2<T>& rhs)
+// {
+//     return {lhs.x / rhs.x, lhs.y / rhs.y};
+// }
 
-template <typename T> Vec2<T> operator+(const Vec2<T>& lhs, const T& rhs)
-{
-    return {lhs.x + rhs, lhs.y + rhs};
-}
+// template <typename T> Vec2<T> operator+(const Vec2<T>& lhs, const T& rhs)
+// {
+//     return {lhs.x + rhs, lhs.y + rhs};
+// }
 
-template <typename T> Vec2<T> operator-(const Vec2<T>& lhs, const T& rhs)
-{
-    return {lhs.x - rhs, lhs.y - rhs};
-}
+// template <typename T> Vec2<T> operator-(const Vec2<T>& lhs, const T& rhs)
+// {
+//     return {lhs.x - rhs, lhs.y - rhs};
+// }
 
-template <typename T> Vec2<T> operator*(const Vec2<T>& lhs, const T& rhs)
-{
-    return {lhs.x * rhs, lhs.y * rhs};
-}
+// template <typename T> Vec2<T> operator*(const Vec2<T>& lhs, const T& rhs)
+// {
+//     return {lhs.x * rhs, lhs.y * rhs};
+// }
 
-template <typename T> Vec2<T> operator*(const T& rhs, const Vec2<T>& lhs)
-{
-    return {lhs.x * rhs, lhs.y * rhs};
-}
+// template <typename T> Vec2<T> operator*(const T& rhs, const Vec2<T>& lhs)
+// {
+//     return {lhs.x * rhs, lhs.y * rhs};
+// }
 
-template <typename T> Vec2<T> operator/(const Vec2<T>& lhs, const T& rhs)
-{
-    return {lhs.x / rhs, lhs.y / rhs};
-}
+// template <typename T> Vec2<T> operator/(const Vec2<T>& lhs, const T& rhs)
+// {
+//     return {lhs.x / rhs, lhs.y / rhs};
+// }
 
-template <typename T> Vec2<T> operator/(const T& rhs, const Vec2<T>& lhs)
-{
-    return {lhs.x / rhs, lhs.y / rhs};
-}
+// template <typename T> Vec2<T> operator/(const T& rhs, const Vec2<T>& lhs)
+// {
+//     return {lhs.x / rhs, lhs.y / rhs};
+// }
 
-template <typename T> bool operator==(const Vec2<T>& rhs, const Vec2<T>& lhs)
-{
-    return lhs.x == rhs.x and lhs.y == rhs.y;
-}
+// template <typename T> bool operator==(const Vec2<T>& rhs, const Vec2<T>& lhs)
+// {
+//     return lhs.x == rhs.x and lhs.y == rhs.y;
+// }
 
-template <typename T>
-bool operator not_eq(const Vec2<T>& rhs, const Vec2<T>& lhs)
-{
-    return lhs.x not_eq rhs.x or lhs.y not_eq rhs.y;
-}
+// template <typename T>
+// bool operator not_eq(const Vec2<T>& rhs, const Vec2<T>& lhs)
+// {
+//     return lhs.x not_eq rhs.x or lhs.y not_eq rhs.y;
+// }
 
-template <typename T> T clamp(T x, T floor, T ceil)
-{
-    if (x < floor) {
-        return floor;
-    } else if (x > ceil) {
-        return ceil;
-    } else {
-        return x;
-    }
-}
+// template <typename T> T clamp(T x, T floor, T ceil)
+// {
+//     if (x < floor) {
+//         return floor;
+//     } else if (x > ceil) {
+//         return ceil;
+//     } else {
+//         return x;
+//     }
+// }
 
-inline Float smoothstep(Float edge0, Float edge1, Float x)
-{
-    x = clamp((x - edge0) / (edge1 - edge0), 0.f, 1.f);
-    return x * x * (3 - 2 * x);
-}
+// inline Float smoothstep(Float edge0, Float edge1, Float x)
+// {
+//     x = clamp((x - edge0) / (edge1 - edge0), 0.f, 1.f);
+//     return x * x * (3 - 2 * x);
+// }
 
-template <typename T> T interpolate(const T& a, const T& b, Float t)
-{
-    return a * t + (1 - t) * b;
-}
-
-
-inline Float ease_out(Float time, Float b, Float c, Float duration)
-{
-    time = time / duration - 1;
-    return c * (time * time * time + 1) + b;
-}
-
-inline Float ease_in(Float time, Float b, Float c, Float duration)
-{
-    time /= duration;
-    return c * time * time * time + b;
-}
+// template <typename T> T interpolate(const T& a, const T& b, Float t)
+// {
+//     return a * t + (1 - t) * b;
+// }
 
 
-inline u8 fast_interpolate(u8 a, u8 b, u8 t)
-{
-    return b + (u8)(((u16)(a - b) * t) >> 8);
-}
+// inline Float ease_out(Float time, Float b, Float c, Float duration)
+// {
+//     time = time / duration - 1;
+//     return c * (time * time * time + 1) + b;
+// }
+
+// inline Float ease_in(Float time, Float b, Float c, Float duration)
+// {
+//     time /= duration;
+//     return c * time * time * time + b;
+// }
+
+
+// inline u8 fast_interpolate(u8 a, u8 b, u8 t)
+// {
+//     return b + (u8)(((u16)(a - b) * t) >> 8);
+// }
 
 
 using Microseconds = s32; // Therefore, a maximum of ~2147.5 seconds will fit in
@@ -219,39 +219,39 @@ s16 cosine(s16 angle);
 using UnitVec = Vec2<Float>;
 
 
-inline UnitVec direction(const Vec2<Float>& origin, const Vec2<Float>& target)
-{
-    const auto vec = target - origin;
+// inline UnitVec direction(const Vec2<Float>& origin, const Vec2<Float>& target)
+// {
+//     const auto vec = target - origin;
 
-    const auto magnitude = sqrt_approx(vec.x * vec.x + vec.y * vec.y);
+//     const auto magnitude = sqrt_approx(vec.x * vec.x + vec.y * vec.y);
 
-    return vec / magnitude;
-}
+//     return vec / magnitude;
+// }
 
 
-inline Vec2<Float> rotate(const Vec2<Float>& input, Float angle)
-{
-    const s16 converted_angle = INT16_MAX * (angle / 360.f);
-    const Float cos_theta = Float(cosine(converted_angle)) / INT16_MAX;
-    const Float sin_theta = Float(sine(converted_angle)) / INT16_MAX;
+// inline Vec2<Float> rotate(const Vec2<Float>& input, Float angle)
+// {
+//     const s16 converted_angle = INT16_MAX * (angle / 360.f);
+//     const Float cos_theta = Float(cosine(converted_angle)) / INT16_MAX;
+//     const Float sin_theta = Float(sine(converted_angle)) / INT16_MAX;
 
-    return {input.x * cos_theta - input.y * sin_theta,
-            input.x * sin_theta + input.y * cos_theta};
-}
+//     return {input.x * cos_theta - input.y * sin_theta,
+//             input.x * sin_theta + input.y * cos_theta};
+// }
 
 
 // Given an angle in degrees, return the corresponding unit vector.
-inline Vec2<Float> cartesian_angle(Float degree_angle)
-{
-    return rotate(Vec2<Float>{1, 0}, degree_angle);
-}
+// inline Vec2<Float> cartesian_angle(Float degree_angle)
+// {
+//     return rotate(Vec2<Float>{1, 0}, degree_angle);
+// }
 
 
-inline Float distance(const Vec2<Float>& from, const Vec2<Float>& to)
-{
-    const Vec2<float> vec = {abs(from.x - to.x), abs(from.y - to.y)};
-    return sqrt_approx(vec.x * vec.x + vec.y * vec.y);
-}
+// inline Float distance(const Vec2<Float>& from, const Vec2<Float>& to)
+// {
+//     const Vec2<float> vec = {abs(from.x - to.x), abs(from.y - to.y)};
+//     return sqrt_approx(vec.x * vec.x + vec.y * vec.y);
+// }
 
 
 enum class Cardinal : u8 { north, south, west, east };

@@ -176,7 +176,7 @@ private:
 // implementation, but caches some recent constant lookups in a local buffer.
 class ConstantPoolCompactCachingImpl : public ConstantPoolCompactImpl {
 private:
-    struct {
+    struct CacheEntry {
         u16 index_ = 0;
         const ClassFile::ConstantHeader* constant_ = nullptr;
     } cache_[4];
@@ -194,7 +194,10 @@ public:
 
         auto found = ConstantPoolCompactImpl::load(index);
 
-        cache_[evict_++ % 4] = {index, found};
+        CacheEntry cached;
+        cached.index_ = index;
+        cached.constant_ = found;
+        cache_[evict_++ % 4] = cached;
 
         return found;
     }

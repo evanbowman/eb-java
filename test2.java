@@ -4,6 +4,7 @@ package test;
 class Test2 {
 
     public Object test = null;
+    public char t2 = 'a';
 
     public int foo(int i, int j, long m, int k) throws Throwable {
 

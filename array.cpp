@@ -17,8 +17,7 @@ Array* Array::create(int size, u8 element_size)
     auto mem = (Array*)jvm::heap::allocate(alloc_size);
 
     if (mem == nullptr) {
-        puts("TODO: oom");
-        while (true) ;
+        return mem;
     }
 
     memset(mem, 0, alloc_size);
