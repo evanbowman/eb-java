@@ -1,7 +1,8 @@
 #include "classfile.hpp"
 #include "class.hpp"
-#include "vm.hpp"
 #include <iostream>
+#include "memory.hpp"
+#include "vm.hpp"
 
 
 
@@ -278,7 +279,7 @@ Class* parse_classfile(Slice classname, const char* str)
         return nullptr;
     }
 
-    auto clz = (Class*)jvm::malloc(sizeof(Class));
+    auto clz = (Class*)jvm::classmemory::allocate(sizeof(Class), alignof(Class));
 
     if (not clz) {
         puts("failed to alloc constant class memory");
@@ -320,8 +321,9 @@ Class* parse_classfile(Slice classname, const char* str)
 
     if (h4->methods_count_.get()) {
 
-        clz->methods_ = (const ClassFile::MethodInfo**)jvm::malloc(
-            sizeof(ClassFile::MethodInfo*) * h4->methods_count_.get());
+        clz->methods_ = (const ClassFile::MethodInfo**)
+            jvm::classmemory::allocate(sizeof(ClassFile::MethodInfo*) * h4->methods_count_.get(),
+                                       alignof(ClassFile::MethodInfo));
 
         if (clz->methods_ == nullptr) {
             puts("failed to alloc method table");

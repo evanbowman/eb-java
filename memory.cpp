@@ -5,7 +5,6 @@
 
 namespace java {
 namespace jvm {
-namespace heap {
 
 
 
@@ -25,6 +24,9 @@ inline void* align(size_t __align,
     }
 }
 
+
+
+namespace heap {
 
 
 
@@ -63,5 +65,51 @@ Object* allocate(size_t size)
 
 
 } // namespace heap
+
+
+namespace classmemory {
+
+
+
+static u8* cm_begin;
+static u8* cm_end;
+static void* cm_alloc;
+
+
+
+void init(u32 size)
+{
+    cm_begin = (u8*)malloc(size);
+    cm_end = cm_begin + size;
+
+    cm_alloc = cm_begin;
+}
+
+
+
+void* allocate(size_t size, size_t alignment)
+{
+    std::size_t total_cm = cm_end - (u8*)cm_alloc;
+
+    if (align(alignment, size, cm_alloc, total_cm)) {
+        printf("cm allocate %p, inst size %zu, remaining %zu\n",
+               cm_alloc,
+               size,
+               total_cm - size);
+        auto result = cm_alloc;
+        cm_alloc = (u8*)cm_alloc + size;
+        return result;
+    }
+    // TODO...
+    puts("cm exhausted!");
+    while (true) ;
+}
+
+
+
+}
+
+
+
 } // namespace jvm
 } // namespace java

@@ -23,9 +23,5 @@ Class* load_class(Class* current_module, u16 class_index);
 
 
 
-void* malloc(size_t);
-
-
-
 } // namespace jvm
 } // namespace java

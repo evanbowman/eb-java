@@ -662,16 +662,6 @@ Exception* invoke_special(Class* clz, u16 method_index)
 
 
 
-void* malloc(size_t size)
-{
-    static size_t total = 0;
-    total += size;
-    printf("vm malloc %zu (total %zu)\n", size, total);
-    return ::malloc(size);
-}
-
-
-
 Object* make_instance_impl(Class* clz)
 {
     const auto fields_size = clz->instance_fields_size();
@@ -1886,7 +1876,7 @@ Object* runtime = nullptr;
 void bootstrap()
 {
     heap::init(4096);
-
+    classmemory::init(4096);
 
     // NOTE: I manually edited the bytecode in the Object classfile, which is
     // why I do not provide the source code. It's hand-rolled java bytecode.
