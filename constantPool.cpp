@@ -1,6 +1,6 @@
 #include "constantPool.hpp"
-#include "vm.hpp"
 #include "memory.hpp"
+#include "vm.hpp"
 
 
 
@@ -14,9 +14,9 @@ const char* ConstantPoolArrayImpl::parse(const ClassFile::HeaderSection1& src)
     // spaces in the constant pool. needs to be fixed for if/when we resurrect
     // this stuff.
 
-    array_ = (const ClassFile::ConstantHeader**)
-        jvm::classmemory::allocate(sizeof(ClassFile::ConstantHeader*) * src.constant_count_.get() - 1,
-                                   alignof(ClassFile::ConstantHeader*));
+    array_ = (const ClassFile::ConstantHeader**)jvm::classmemory::allocate(
+        sizeof(ClassFile::ConstantHeader*) * src.constant_count_.get() - 1,
+        alignof(ClassFile::ConstantHeader*));
 
     const char* str = ((const char*)&src) + sizeof(ClassFile::HeaderSection1);
 
@@ -39,9 +39,8 @@ void ConstantPoolCompactImpl::reserve_fields(int count)
             ;
     }
 
-    bindings_ = (FieldBinding*)
-        jvm::classmemory::allocate(sizeof(FieldBinding) * count,
-                                   alignof(FieldBinding));
+    bindings_ = (FieldBinding*)jvm::classmemory::allocate(
+        sizeof(FieldBinding) * count, alignof(FieldBinding));
 
     memset(bindings_, 0, sizeof(FieldBinding) * count);
 

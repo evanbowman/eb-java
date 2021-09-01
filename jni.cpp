@@ -1,6 +1,6 @@
 #include "jni.hpp"
-#include "vm.hpp"
 #include "memory.hpp"
+#include "vm.hpp"
 
 
 
@@ -25,8 +25,8 @@ void bind_native_method(Class* clz,
         // overloaded methods.
 
         if (method_name_str == method_name) {
-            auto stub = (MethodStub*)
-                jvm::classmemory::allocate(sizeof(MethodStub), alignof(MethodStub));
+            auto stub = (MethodStub*)jvm::classmemory::allocate(
+                sizeof(MethodStub), alignof(MethodStub));
 
             auto old_method = clz->methods_[i];
 

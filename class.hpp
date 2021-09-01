@@ -32,7 +32,8 @@ struct Class {
     const ClassFile::HeaderSection2* interfaces() const;
 
 
-    const ClassFile::MethodInfo* load_method(const char* name);
+    const ClassFile::MethodInfo* load_method(const char* name,
+                                             Slice type_signature);
 
 
     void put_field(Object* obj, u16 const_pool_index, void* value);

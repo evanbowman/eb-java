@@ -14,9 +14,7 @@ struct Slice {
     size_t length_ = 0;
 
 
-    Slice(const char* ptr, size_t length) :
-        ptr_(ptr),
-        length_(length)
+    Slice(const char* ptr, size_t length) : ptr_(ptr), length_(length)
     {
     }
 

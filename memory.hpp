@@ -36,7 +36,7 @@ void* allocate(size_t size, size_t align);
 
 
 
-}
+} // namespace classmemory
 
 
 

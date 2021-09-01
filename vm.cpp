@@ -12,6 +12,7 @@
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
 #include "incbin.h"
 #include "memory.hpp"
+#include <math.h>
 
 
 
@@ -31,6 +32,38 @@ static Class primitive_array_class;
 // We make the distinction between primitive arrays and reference arrays,
 // because later on, we will need to track gc roots.
 static Class reference_array_class;
+
+
+
+static Class return_address_class;
+
+
+
+// Our JVM implementation assumes that all values used with aload are instances
+// of classes. Therefore, the jvm returnAddress datatype must be implemented as
+// an instance of a pseudo-class. Newer compilers don't generated jsrs anyway,
+// so this is only relevant when running legacy jars.
+struct ReturnAddress {
+    Object object_;
+    u32 pc_;
+};
+
+
+
+ReturnAddress* make_return_address(u32 pc)
+{
+    auto mem = (ReturnAddress*)heap::allocate(sizeof(ReturnAddress));
+    if (mem == nullptr) {
+        puts("oom");
+        while (true)
+            ;
+    }
+    mem->object_.class_ = &return_address_class;
+    mem->pc_ = pc;
+
+    return mem;
+}
+
 
 
 // TODO: maintain a secondary bitvector, where we can keep track of whether an
@@ -205,10 +238,13 @@ double load_wide_operand_d(int offset)
 }
 
 
-void dup()
+void dup(int offset)
 {
-    __operand_stack.push_back(__operand_stack.back());
-    __operand_is_object.push_back(__operand_is_object.back());
+    __operand_stack.push_back(
+        __operand_stack[(__operand_stack.size() - 1) - offset]);
+
+    __operand_is_object.push_back(
+        __operand_is_object[(__operand_is_object.size() - 1) - offset]);
 }
 
 
@@ -288,6 +324,13 @@ struct Bytecode {
         iload_1         = 0x1b,
         iload_2         = 0x1c,
         iload_3         = 0x1d,
+        iand            = 0x7e,
+        ior             = 0x80,
+        ixor            = 0x82,
+        ishl            = 0x78,
+        ishr            = 0x7a,
+        iushr           = 0x7c,
+        irem            = 0x70,
         iadd            = 0x60,
         isub            = 0x64,
         idiv            = 0x6c,
@@ -296,6 +339,8 @@ struct Bytecode {
         i2f             = 0x86,
         i2c             = 0x92,
         i2s             = 0x93,
+        i2l             = 0x85,
+        i2d             = 0x87,
         iinc            = 0x84,
         iastore         = 0x4f,
         iaload          = 0x2e,
@@ -334,7 +379,13 @@ struct Bytecode {
         fconst_0        = 0x0b,
         fconst_1        = 0x0c,
         fconst_2        = 0x0d,
+        f2d             = 0x8d,
+        f2i             = 0x8b,
+        f2l             = 0x8c,
+        fneg            = 0x76,
+        frem            = 0x72,
         fadd            = 0x62,
+        fsub            = 0x66,
         fdiv            = 0x6e,
         fmul            = 0x6a,
         fload           = 0x17,
@@ -352,6 +403,12 @@ struct Bytecode {
         fcmpl           = 0x95,
         fcmpg           = 0x96,
         freturn         = 0xae,
+        d2f             = 0x90,
+        d2i             = 0x8e,
+        d2l             = 0x8f,
+        dadd            = 0x63,
+        daload          = 0x31,
+        dastore         = 0x52,
         saload          = 0x35,
         sastore         = 0x56,
         sipush          = 0x11,
@@ -364,8 +421,9 @@ struct Bytecode {
         invokespecial   = 0xb7,
         invokeinterface = 0xb9,
         vreturn         = 0xb1,
-        // jsr           = 0xa8, unimplemented
-        // jsr_w         = 0xc9,
+        ret             = 0xa9,
+        jsr             = 0xa8,
+        jsr_w           = 0xc9,
     };
 };
 // clang-format on
@@ -614,6 +672,12 @@ static Exception* dispatch_method(Class* clz,
     Object* self = nullptr;
     if ((not direct_dispatch) or special) {
         self = (Object*)load_operand(argc.operand_count_);
+
+        if (self == nullptr) {
+            puts("TODO: nullptr exception");
+            while (true)
+                ;
+        }
     }
 
     auto mtd = [&] {
@@ -665,7 +729,8 @@ Object* make_instance_impl(Class* clz)
     auto mem = (Object*)heap::allocate(sizeof(Object) + fields_size);
     if (mem == nullptr) {
         puts("oom");
-        while (true) ;
+        while (true)
+            ;
     }
     new (mem) Object();
     mem->class_ = clz;
@@ -752,7 +817,7 @@ void ldc2(Class* clz, u16 index)
 
 
 
-bool instanceof(Object* obj, Class* clz)
+bool instanceof (Object * obj, Class* clz)
 {
     auto current = obj->class_;
     while (current) {
@@ -782,7 +847,7 @@ find_exception_handler(Class* clz,
 
         if (pc >= entry.start_pc_.get() and pc < entry.end_pc_.get()) {
             auto catch_clz = load_class(clz, entry.catch_type_.get());
-            if (instanceof(exception, catch_clz)) {
+            if (instanceof (exception, catch_clz)) {
                 return &entry;
             }
         }
@@ -798,8 +863,7 @@ bool handle_exception(Class* clz,
                       u32& pc,
                       const ClassFile::ExceptionTable* exception_table)
 {
-    auto handler =
-        find_exception_handler(clz, exn, pc, exception_table);
+    auto handler = find_exception_handler(clz, exn, pc, exception_table);
     if (handler) {
         // Subsequent bytecode will expect to be able to load the
         // exception object into a local variable, so push it onto
@@ -875,12 +939,13 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             auto array = Array::create(len, sizeof(Object*));
-            
+
             if (array == nullptr) {
                 puts("TODO: ran out of memory, TODO: throw oom");
-                while (true) ;
+                while (true)
+                    ;
             }
-            
+
             array->object_.class_ = &reference_array_class;
             push_operand_a(*(Object*)array);
             pc += 3;
@@ -925,6 +990,13 @@ Exception* execute_bytecode(Class* clz,
         case Bytecode::arraylength: {
             auto array = (Array*)load_operand(0);
             pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
+
             push_operand_i(array->size_);
             ++pc;
             break;
@@ -940,6 +1012,12 @@ Exception* execute_bytecode(Class* clz,
 
             pop_operand();
             pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
 
             if (array->check_bounds(index)) {
                 Object* result;
@@ -962,6 +1040,12 @@ Exception* execute_bytecode(Class* clz,
             static_assert(sizeof(s32) == sizeof(float),
                           "This code assumes that both int "
                           "and float are four bytes");
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
 
             pop_operand();
             pop_operand();
@@ -1020,25 +1104,25 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
-        case Bytecode::instanceof: {
+        case Bytecode:: instanceof: {
             auto other =
                 load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
             auto obj = (Object*)load_operand(0);
             pop_operand();
             pc += 3;
-            push_operand_i(instanceof(obj, other));
+            push_operand_i(instanceof (obj, other));
             break;
         }
 
         case Bytecode::dup:
-            dup();
+            dup(0);
             ++pc;
             break;
 
         case Bytecode::dup2:
             // FiXME: loses info about whether operands are objects.
-            push_operand_p(load_operand(1));
-            push_operand_p(load_operand(1));
+            dup(1);
+            dup(1);
             ++pc;
             break;
 
@@ -1109,7 +1193,34 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
             push_operand_i(result);
-            pc += 1;
+            ++pc;
+            break;
+        }
+
+        case Bytecode::iand: {
+            const s32 result = load_operand_i(0) & load_operand_i(1);
+            pop_operand();
+            pop_operand();
+            push_operand_i(result);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::ior: {
+            const s32 result = load_operand_i(0) | load_operand_i(1);
+            pop_operand();
+            pop_operand();
+            push_operand_i(result);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::ixor: {
+            const s32 result = load_operand_i(0) ^ load_operand_i(1);
+            pop_operand();
+            pop_operand();
+            push_operand_i(result);
+            ++pc;
             break;
         }
 
@@ -1118,7 +1229,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
             push_operand_i(result);
-            pc += 1;
+            ++pc;
             break;
         }
 
@@ -1127,7 +1238,46 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
             push_operand_i(result);
-            pc += 1;
+            ++pc;
+            break;
+        }
+
+        case Bytecode::irem: {
+            const s32 result = load_operand_i(1) % load_operand_i(0);
+            pop_operand();
+            pop_operand();
+            push_operand_i(result);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::iushr: {
+            const s32 result = (u32)load_operand_i(1)
+                               << ((u32)load_operand_i(0) & 0x1f);
+            pop_operand();
+            pop_operand();
+            push_operand_i(result);
+            ++pc;
+            break;
+        }
+
+        // FIXME: ishl and ishr may not be implemented correction (sign
+        // extension and negative numbers).
+        case Bytecode::ishl: {
+            const s32 result = load_operand_i(1) << (load_operand_i(0) & 0x1f);
+            pop_operand();
+            pop_operand();
+            push_operand_i(result);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::ishr: {
+            const s32 result = load_operand_i(1) >> (load_operand_i(0) & 0x1f);
+            pop_operand();
+            pop_operand();
+            push_operand_i(result);
+            ++pc;
             break;
         }
 
@@ -1136,7 +1286,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
             push_operand_i(result);
-            pc += 1;
+            ++pc;
             break;
         }
 
@@ -1144,7 +1294,7 @@ Exception* execute_bytecode(Class* clz,
             const s32 result = -load_operand_i(0);
             pop_operand();
             push_operand_i(result);
-            pc += 1;
+            ++pc;
             break;
         }
 
@@ -1165,9 +1315,25 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::i2s: {
-            short val = load_operand_i(0);
+            s16 val = load_operand_i(0);
             pop_operand();
             push_operand_i(val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::i2l: {
+            s64 val = load_operand_i(0);
+            pop_operand();
+            push_wide_operand_l(val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::i2d: {
+            double val = load_operand_i(0);
+            pop_operand();
+            push_wide_operand_d(val);
             ++pc;
             break;
         }
@@ -1344,6 +1510,58 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
+        case Bytecode::f2d: {
+            float value = load_operand_f(0);
+            pop_operand();
+            push_wide_operand_d(value);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::f2i: {
+            float value = load_operand_f(0);
+            pop_operand();
+            push_operand_i(value);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::f2l: {
+            float value = load_operand_f(0);
+            pop_operand();
+            push_wide_operand_l(value);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::fneg: {
+            float value = load_operand_f(0);
+            pop_operand();
+            push_operand_f(-value);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::frem: {
+            float lhs = load_operand_f(1);
+            float rhs = load_operand_f(0);
+            pop_operand();
+            pop_operand();
+            push_operand_f(fmod(lhs, rhs));
+            ++pc;
+            break;
+        }
+
+        case Bytecode::fsub: {
+            float lhs = load_operand_f(1);
+            float rhs = load_operand_f(0);
+            pop_operand();
+            pop_operand();
+            auto result = lhs - rhs;
+            push_operand_f(result);
+            ++pc;
+        }
+
         case Bytecode::fadd: {
             float lhs = load_operand_f(0);
             float rhs = load_operand_f(1);
@@ -1402,6 +1620,97 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
+        case Bytecode::d2f: {
+            double d = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            push_operand_f(d);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::d2i: {
+            double d = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            push_operand_i(d);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::d2l: {
+            double d = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(d);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dadd: {
+            auto lhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            auto rhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            push_wide_operand_d(lhs + rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::daload: {
+            auto array = (Array*)load_operand(1);
+            s32 index = load_operand_i(0);
+            pop_operand();
+            pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
+
+            if (array->check_bounds(index)) {
+                double result;
+                memcpy(&result, array->address(index), sizeof result);
+                push_wide_operand_d(result);
+            } else {
+                puts("array index out of bounds");
+                while (true)
+                    ;
+            }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dastore: {
+            auto value = load_wide_operand_d(0);
+            auto index = load_operand_i(2);
+            auto array = (Array*)load_operand(3);
+
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
+
+            if (array->check_bounds(index)) {
+                memcpy(array->address(index), &value, sizeof value);
+            } else {
+                puts("array index out of bounds");
+                while (true)
+                    ;
+            }
+            ++pc;
+            break;
+        }
+
         case Bytecode::saload: {
             auto array = (Array*)load_operand(1);
             s32 index = load_operand_i(0);
@@ -1412,6 +1721,12 @@ Exception* execute_bytecode(Class* clz,
 
             pop_operand();
             pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
 
             if (array->check_bounds(index)) {
                 s16 result;
@@ -1438,6 +1753,12 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
             pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
 
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
@@ -1597,6 +1918,12 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
 
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
+
             if (array->check_bounds(index)) {
                 *array->address(index) = value;
             } else {
@@ -1612,6 +1939,15 @@ Exception* execute_bytecode(Class* clz,
         case Bytecode::baload: {
             auto array = (Array*)load_operand(1);
             s32 index = load_operand_i(0);
+
+            pop_operand();
+            pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
 
             if (array->check_bounds(index)) {
                 u8 value = *array->address(index);
@@ -1638,6 +1974,12 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
 
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
+
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
@@ -1661,6 +2003,12 @@ Exception* execute_bytecode(Class* clz,
 
             pop_operand();
             pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
 
             if (array->check_bounds(index)) {
                 s32 result;
@@ -1853,6 +2201,26 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
+        // NOTE: jsr, jsr_w, and ret are untested. I need to find a java
+        // compiler that actually generates them.
+        case Bytecode::jsr: {
+            push_operand_a(*(Object*)make_return_address(pc + 3));
+            pc += ((network_s16*)(bytecode + pc + 1))->get();
+            break;
+        }
+
+        case Bytecode::jsr_w: {
+            push_operand_a(*(Object*)make_return_address(pc + 5));
+            pc += ((network_s32*)(bytecode + pc + 1))->get();
+            break;
+        }
+
+        case Bytecode::ret: {
+            auto rt = (ReturnAddress*)load_local(bytecode[pc + 1]);
+            pc = rt->pc_;
+            break;
+        }
+
         default:
             printf("unrecognized bytecode instruction %#02x\n", bytecode[pc]);
             for (int i = 0; i < 10; ++i) {
@@ -1887,6 +2255,7 @@ void bootstrap()
 
         primitive_array_class.super_ = obj_class;
         reference_array_class.super_ = obj_class;
+        return_address_class.super_ = obj_class;
     }
 
     if (auto runtime_class =
@@ -1925,6 +2294,29 @@ void bootstrap()
 
 
 
+void start(Class* entry_point)
+{
+    const auto type_signature = Slice::from_c_str("([Ljava/lang/String;)V");
+
+
+    if (auto entry = entry_point->load_method("main", type_signature)) {
+
+        push_operand_p(nullptr); // String[] args
+
+        ArgumentInfo argc;
+        argc.argument_count_ = 1;
+        argc.operand_count_ = 1;
+
+        auto exn = java::jvm::invoke_method(
+            entry_point, nullptr, entry, argc, type_signature);
+        if (exn) {
+            puts("uncaught exception from main method");
+        }
+    }
+}
+
+
+
 void start_from_jar(const char* jar_file_bytes, Slice classpath)
 {
     jar_file_data = jar_file_bytes;
@@ -1932,12 +2324,7 @@ void start_from_jar(const char* jar_file_bytes, Slice classpath)
     bootstrap();
 
     if (auto clz = java::jvm::import(classpath)) {
-        if (auto entry = clz->load_method("main")) {
-            auto exn = java::jvm::invoke_method(clz, nullptr, entry);
-            if (exn) {
-                puts("uncaught exception from main method");
-            }
-        }
+        start(clz);
     } else {
         puts("failed to import main class");
     }
@@ -1950,12 +2337,7 @@ void start_from_classfile(const char* class_file_bytes, Slice classpath)
     bootstrap();
 
     if (auto clz = parse_classfile(classpath, class_file_bytes)) {
-        if (auto entry = clz->load_method("main")) {
-            auto exn = java::jvm::invoke_method(clz, nullptr, entry);
-            if (exn) {
-                puts("uncaught exception from main method");
-            }
-        }
+        start(clz);
     } else {
         puts("failed to import main class");
     }

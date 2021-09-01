@@ -19,9 +19,9 @@ static void* heap_alloc = heap_;
 
 static size_t used()
 {
-    return
-        (JVM_HEAP_SIZE - (heap_end - heap_)) // class metadata grows from end.
-        + ((u8*)heap_alloc - heap_); // object instance grow from beginning.
+    return (JVM_HEAP_SIZE -
+            (heap_end - heap_))         // class metadata grows from end.
+           + ((u8*)heap_alloc - heap_); // object instance grow from beginning.
 }
 
 
@@ -38,12 +38,13 @@ Object* allocate(size_t size)
         auto result = (Object*)heap_alloc;
         heap_alloc = ((u8*)heap_alloc) + size;
 
-        printf("heap allocate instance %p, inst size %zu, used %zu, remaining %zu\n",
+        printf("heap allocate instance %p, inst size %zu, used %zu, remaining "
+               "%zu\n",
                heap_alloc,
                size,
                used(),
                heap_end - (u8*)heap_alloc);
-        
+
         return result;
     }
 
@@ -76,7 +77,8 @@ void* allocate(size_t size, size_t alignment)
 
     if (alloc_ptr < heap::heap_alloc) {
         puts("cm exhausted!");
-        while (true) ;
+        while (true)
+            ;
     }
 
 
@@ -94,7 +96,7 @@ void* allocate(size_t size, size_t alignment)
 
 
 
-}
+} // namespace classmemory
 
 
 

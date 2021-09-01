@@ -23,7 +23,8 @@ const ClassFile::HeaderSection2* Class::interfaces() const
 
 
 
-const ClassFile::MethodInfo* Class::load_method(const char* name)
+const ClassFile::MethodInfo* Class::load_method(const char* name,
+                                                Slice type_signature)
 {
     auto name_slc = Slice::from_c_str(name);
 
@@ -33,7 +34,11 @@ const ClassFile::MethodInfo* Class::load_method(const char* name)
             const auto method_name_str =
                 constants_->load_string(methods_[i]->name_index_.get());
 
-            if (method_name_str == name_slc) {
+            const auto method_type_str =
+                constants_->load_string(methods_[i]->descriptor_index_.get());
+
+            if (method_name_str == name_slc and
+                method_type_str == type_signature) {
                 return methods_[i];
             }
         }
