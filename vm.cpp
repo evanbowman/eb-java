@@ -368,6 +368,10 @@ struct Bytecode {
         laload          = 0x2f,
         lcmp            = 0x94,
         ladd            = 0x61,
+        lsub            = 0x65,
+        lmul            = 0x69,
+        ldiv            = 0x6d,
+        lneg            = 0x75,
         land            = 0x7f,
         lconst_0        = 0x09,
         lconst_1        = 0x0a,
@@ -1215,6 +1219,12 @@ Exception* execute_bytecode(Class* clz,
             break;
 
         case Bytecode::getfield: {
+            // FIXME: getfield and putfield need to be refactored so that they
+            // check the size of the field before trying to read/write it, so
+            // that we know how many operand stack slots that we need to
+            // read. The code currently works for most datatypes, but breaks for
+            // long/double datatypes.
+
             auto arg = (Object*)load_operand(0);
             pop_operand();
 
@@ -2300,6 +2310,30 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
+        case Bytecode::lsub: {
+            auto lhs = load_wide_operand_l(2);
+            auto rhs = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(lhs - rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::ldiv: {
+            auto lhs = load_wide_operand_l(2);
+            auto rhs = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(lhs / rhs);
+            ++pc;
+            break;
+        }
+
         case Bytecode::ladd: {
             auto lhs = load_wide_operand_l(0);
             auto rhs = load_wide_operand_l(2);
@@ -2308,6 +2342,39 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
             push_wide_operand_l(lhs + rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lmul: {
+            auto lhs = load_wide_operand_l(2);
+            auto rhs = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(lhs * rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lneg: {
+            auto value = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(-value);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::land: {
+            auto lhs = load_wide_operand_l(2);
+            auto rhs = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(lhs & rhs);
             ++pc;
             break;
         }
