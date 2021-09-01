@@ -427,6 +427,8 @@ struct Bytecode {
         ret             = 0xa9,
         jsr             = 0xa8,
         jsr_w           = 0xc9,
+        monitorenter    = 0xc2,
+        monitorexit     = 0xc3,
     };
 };
 // clang-format on
@@ -2305,6 +2307,19 @@ Exception* execute_bytecode(Class* clz,
             pc = rt->pc_;
             break;
         }
+
+        // NOTE: We intend our JVM implementation for embedded systems, where we
+        // do not care about multithreaded execution. monitorenter/exit
+        // essentially do nothing.
+        case Bytecode::monitorenter:
+            pop_operand();
+            ++pc;
+            break;
+
+        case Bytecode::monitorexit:
+            pop_operand();
+            ++pc;
+            break;
 
         default:
             printf("unrecognized bytecode instruction %#02x\n", bytecode[pc]);
