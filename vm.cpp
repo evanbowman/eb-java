@@ -41,8 +41,8 @@ static Class return_address_class;
 
 // Our JVM implementation assumes that all values used with aload are instances
 // of classes. Therefore, the jvm returnAddress datatype must be implemented as
-// an instance of a pseudo-class. Newer compilers don't generated jsrs anyway,
-// so this is only relevant when running legacy jars.
+// an instance of a pseudo-class. Newer compilers don't generate jsr/jsr_w/ret
+// anyway, so this is only relevant when running legacy jars.
 struct ReturnAddress {
     Object object_;
     u32 pc_;
@@ -511,13 +511,23 @@ void bind_arguments(Object* self,
                 ++i;
                 break;
 
-            case 'J':
-            case 'D':
-                // FIXME: store L/D args
+            case 'J': {
+                auto l = load_wide_local_l(stack_load_index);
+                store_wide_local(local_param_index, &l);
                 local_param_index += 2;
                 stack_load_index -= 2;
                 ++i;
                 break;
+            }
+
+            case 'D': {
+                auto d = load_wide_local_d(stack_load_index);
+                store_wide_local(local_param_index, &d);
+                local_param_index += 2;
+                stack_load_index -= 2;
+                ++i;
+                break;
+            }
 
             case 'L':
                 store_local(
