@@ -17,12 +17,71 @@ static void* heap_alloc = heap_;
 
 
 
-[[maybe_unused]]
-static size_t used()
+size_t total()
+{
+    return JVM_HEAP_SIZE;
+}
+
+
+
+size_t used()
 {
     return (JVM_HEAP_SIZE -
             (heap_end - heap_))         // class metadata grows from end.
            + ((u8*)heap_alloc - heap_); // object instance grow from beginning.
+}
+
+
+
+void print_stats(void (*print_str_callback)(const char*))
+{
+    print_str_callback("Heap Chart   (*) used   (.) unused\n");
+
+
+    static const int width = 80;
+    static const int height = 5;
+
+    int total = width * height;
+    auto begin = total * (float((u8*)heap_alloc - heap_) / JVM_HEAP_SIZE);
+    auto middle = total -
+        (begin + total * (float(JVM_HEAP_SIZE - (heap_end - heap_)) / JVM_HEAP_SIZE));
+
+    char matrix[width][height];
+
+
+    for (int x = 0; x < width; ++x) {
+        for (int y = 0; y < height; ++y) {
+            if (begin > 0) {
+                --begin;
+                matrix[x][y] = '*';
+            } else if (middle > 0) {
+                --middle;
+                matrix[x][y] = '.';
+            } else {
+                matrix[x][y] = '*';
+            }
+        }
+    }
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            char buffer[2];
+            buffer[0] = matrix[x][y];
+            buffer[1] = '\0';
+            print_str_callback(buffer);
+        }
+        print_str_callback("\n");
+    }
+
+    char buffer[100];
+    snprintf(buffer,
+             sizeof buffer,
+             "heap used %zu, remaining "
+             "%zu\n",
+             used(),
+             heap_end - (u8*)heap_alloc);
+
+    print_str_callback(buffer);
 }
 
 
@@ -38,14 +97,6 @@ Object* allocate(size_t size)
     if (remaining) {
         auto result = (Object*)heap_alloc;
         heap_alloc = ((u8*)heap_alloc) + size;
-
-        // printf("heap allocate instance %p, inst size %zu, used %zu, remaining "
-        //        "%zu\n",
-        //        heap_alloc,
-        //        size,
-        //        used(),
-        //        heap_end - (u8*)heap_alloc);
-
         return result;
     }
 
@@ -84,13 +135,6 @@ void* allocate(size_t size, size_t alignment)
 
 
     heap::heap_end = alloc_ptr;
-
-    // printf("cm allocate %p, inst size %zu, used: %zu, remaining %zu\n",
-    //        alloc_ptr,
-    //        size,
-    //        heap::used(),
-    //        heap::heap_end - (u8*)heap::heap_alloc);
-
 
     return alloc_ptr;
 }

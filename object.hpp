@@ -9,12 +9,14 @@ namespace java {
 
 
 struct Object {
-    Class* class_;
 
     struct {
+        u32 is_class_ : 1;
         u32 mark_bit_ : 1;
-        u32 reserved_ : 31;
+        u32 reserved_ : 30;
     } flags_;
+
+    Class* class_;
 
 
     // After the object header, all the fields will be packed into the end of

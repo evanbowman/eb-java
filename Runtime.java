@@ -14,4 +14,9 @@ class Runtime {
     public native void gc();
 
 
+    public native long totalMemory();
+
+
+    public native long freeMemory();
+
 }

@@ -17,6 +17,18 @@ namespace heap {
 
 
 
+void print_stats(void (*print_str_callback)(const char*));
+
+
+
+size_t used();
+
+
+
+size_t total();
+
+
+
 Object* allocate(size_t size);
 
 

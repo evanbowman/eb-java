@@ -1,4 +1,5 @@
 #include "array.hpp"
+#include "buffer.hpp"
 #include "class.hpp"
 #include "classfile.hpp"
 #include "endian.hpp"
@@ -7,12 +8,12 @@
 #include "object.hpp"
 #include <iostream>
 #include <string.h>
-#include <vector>
 #define INCBIN_PREFIX
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
 #include "incbin.h"
 #include "memory.hpp"
 #include <math.h>
+#include <chrono>
 
 
 
@@ -65,16 +66,25 @@ ReturnAddress* make_return_address(u32 pc)
 }
 
 
+#ifndef JVM_OPERAND_STACK_SIZE
+#define JVM_OPERAND_STACK_SIZE 1024
+#endif
+
+
+#ifndef JVM_STACK_LOCALS_SIZE
+#define JVM_STACK_LOCALS_SIZE 1024
+#endif
+
 
 // TODO: maintain a secondary bitvector, where we can keep track of whether an
 // operand stack element is primitive or instance.
-std::vector<void*> __operand_stack;
+Buffer<void*, JVM_OPERAND_STACK_SIZE> __operand_stack;
 // For the GC implementation, we'll ultimately need to keep track of which
 // operands are objects.
-std::vector<bool> __operand_is_object;
+Buffer<bool, JVM_OPERAND_STACK_SIZE> __operand_is_object;
 
-std::vector<void*> __locals;
-std::vector<bool> __local_is_object;
+Buffer<void*, JVM_STACK_LOCALS_SIZE> __locals;
+Buffer<bool, JVM_STACK_LOCALS_SIZE> __local_is_object;
 
 
 
@@ -441,7 +451,10 @@ struct ClassTableEntry {
 
 
 
-static std::vector<ClassTableEntry> class_table;
+// FIXME: use a different datastructure for the class table (perhaps an
+// intrusive binary tree?). We have no idea how many classes will be in the
+// system.
+static Buffer<ClassTableEntry, 100> class_table;
 
 
 
@@ -557,6 +570,12 @@ void bind_arguments(Object* self,
 
 
 
+
+Exception* TODO_throw_proper_exception();
+
+
+
+
 Exception* invoke_method(Class* clz,
                          Object* self,
                          const ClassFile::MethodInfo* method,
@@ -609,9 +628,7 @@ Exception* invoke_method(Class* clz,
         }
     }
 
-    puts("method not found, TODO: throw exception");
-    while (true)
-        ;
+    return TODO_throw_proper_exception();
 }
 
 
@@ -697,9 +714,19 @@ static Exception* dispatch_method(Class* clz,
         self = (Object*)load_operand(argc.operand_count_);
 
         if (self == nullptr) {
-            puts("TODO: nullptr exception");
-            while (true)
-                ;
+            // We're exiting early. Usually, a further nested function call
+            // removes arguments from the caller's operand stack and copies them
+            // into the callee's stack frame. But because we hit a
+            // NullPointerException when trying to invoke a method, we need to
+            // pop the arguments off the the stack before exiting.
+
+            for (int i = 0;
+                 i < argc.operand_count_ + 1; // +1 for self
+                 ++i) {
+                pop_operand();
+            }
+
+            return TODO_throw_proper_exception();
         }
     }
 
@@ -727,10 +754,7 @@ static Exception* dispatch_method(Class* clz,
         }
         return invoke_method(mtd.second, self, mtd.first, argc, lhs_type);
     } else {
-        // TODO: raise error
-        puts("method lookup failed!");
-        while (true)
-            ;
+        return TODO_throw_proper_exception();
     }
 }
 
@@ -1194,6 +1218,11 @@ Exception* execute_bytecode(Class* clz,
             auto arg = (Object*)load_operand(0);
             pop_operand();
 
+            if (arg == nullptr) {
+                // TODO: NullPointerException
+                return TODO_throw_proper_exception();
+            }
+
             bool is_object;
             auto field = arg->get_field(
                 ((network_u16*)&bytecode[pc + 1])->get(), is_object);
@@ -1208,14 +1237,23 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
-        case Bytecode::putfield:
-            ((Object*)load_operand(1))
-                ->put_field(((network_u16*)&bytecode[pc + 1])->get(),
-                            load_operand(0));
+        case Bytecode::putfield: {
+            auto obj = (Object*)load_operand(1);
+            auto val = load_operand(0);
+
             pop_operand();
             pop_operand();
+
+            if (obj == nullptr) {
+                // TODO: NullPointerException
+                return TODO_throw_proper_exception();
+            }
+
+            obj->put_field(((network_u16*)&bytecode[pc + 1])->get(),
+                           val);
             pc += 3;
             break;
+        }
 
         case Bytecode::isub: {
             const s32 result = load_operand_i(1) - load_operand_i(0);
@@ -2437,6 +2475,22 @@ void bootstrap()
                                     while (true)
                                         ;
                                 });
+
+        jni::bind_native_method(runtime_class,
+                                Slice::from_c_str("totalMemory"),
+                                Slice::from_c_str("TODO_:)"),
+                                [] {
+                                    push_wide_operand_l(jvm::heap::total());
+                                });
+
+        jni::bind_native_method(runtime_class,
+                                Slice::from_c_str("freeMemory"),
+                                Slice::from_c_str("TODO_:)"),
+                                [] {
+                                    push_wide_operand_l(jvm::heap::total() -
+                                                        jvm::heap::used());
+                                });
+
     }
 
     if (parse_classfile(Slice::from_c_str("java/lang/Throwable"),
@@ -2459,8 +2513,17 @@ int start(Class* entry_point)
         argc.argument_count_ = 1;
         argc.operand_count_ = 1;
 
+        using namespace std::chrono;
+        auto start = high_resolution_clock::now();
         auto exn = java::jvm::invoke_method(
             entry_point, nullptr, entry, argc, type_signature);
+        auto end = high_resolution_clock::now();
+        std::cout << std::chrono::duration_cast<nanoseconds>(end - start).count()
+                  << std::endl;
+
+        heap::print_stats([](const char* str) {
+            printf("%s", str);
+        });
 
         if (exn) {
             puts("uncaught exception from main method");
