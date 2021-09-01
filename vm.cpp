@@ -354,6 +354,8 @@ struct Bytecode {
         lload_1         = 0x1f,
         lload_2         = 0x20,
         lload_3         = 0x21,
+        lastore         = 0x50,
+        laload          = 0x2f,
         lcmp            = 0x94,
         ladd            = 0x61,
         land            = 0x7f,
@@ -612,6 +614,25 @@ Exception* invoke_method(Class* clz,
 
 
 
+Class* load_class_by_name(Slice class_name)
+{
+    for (auto& entry : class_table) {
+        if (entry.name_ == class_name) {
+            return entry.class_;
+        }
+    }
+
+    if (auto clz = import(class_name)) {
+        return clz;
+    } else {
+        puts("missing class!");
+        while (true)
+            ;
+    }
+}
+
+
+
 Class* load_class(Class* current_module, u16 class_index)
 {
     auto c_clz =
@@ -621,19 +642,8 @@ Class* load_class(Class* current_module, u16 class_index)
     auto cname =
         current_module->constants_->load_string(c_clz->name_index_.get());
 
-    for (auto& entry : class_table) {
-        if (entry.name_ == cname) {
-            return entry.class_;
-        }
-    }
 
-    if (auto clz = import(cname)) {
-        return clz;
-    } else {
-        puts("missing class!");
-        while (true)
-            ;
-    }
+    return load_class_by_name(cname);
 }
 
 
@@ -750,6 +760,7 @@ Object* make_instance_impl(Class* clz)
 
 
 
+
 Object* make_instance(Class* current_module, u16 class_constant)
 {
     auto clz = load_class(current_module, class_constant);
@@ -761,6 +772,13 @@ Object* make_instance(Class* current_module, u16 class_constant)
     // TODO: fatal error...
     puts("warning! failed to alloc class!");
     return nullptr;
+}
+
+
+
+Exception* TODO_throw_proper_exception()
+{
+    return make_instance_impl(load_class_by_name(Slice::from_c_str("java/lang/Throwable")));
 }
 
 
@@ -1035,9 +1053,8 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand_a(*result);
             } else {
-                puts("array index out of bounds");
-                while (true)
-                    ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             ++pc;
             break;
@@ -1065,10 +1082,8 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                // TODO: throw error
-                puts("array index out of bounds!");
-                while (true)
-                    ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             ++pc;
             break;
@@ -1080,6 +1095,7 @@ Exception* execute_bytecode(Class* clz,
             break;
 
         case Bytecode::athrow: {
+            THROW:
             auto exn = (Object*)load_operand(0);
             pop_operand();
 
@@ -1687,9 +1703,8 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_wide_operand_d(result);
             } else {
-                puts("array index out of bounds");
-                while (true)
-                    ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             ++pc;
             break;
@@ -1714,9 +1729,58 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                puts("array index out of bounds");
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
+            }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::laload: {
+            auto array = (Array*)load_operand(1);
+            s32 index = load_operand_i(0);
+            pop_operand();
+            pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
                 while (true)
                     ;
+            }
+
+            if (array->check_bounds(index)) {
+                s64 result;
+                memcpy(&result, array->address(index), sizeof result);
+                push_wide_operand_l(result);
+            } else {
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
+            }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lastore: {
+            auto value = load_wide_operand_l(0);
+            auto index = load_operand_i(2);
+            auto array = (Array*)load_operand(3);
+
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
+
+            if (array->check_bounds(index)) {
+                memcpy(array->address(index), &value, sizeof value);
+            } else {
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             ++pc;
             break;
@@ -1744,9 +1808,8 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand_i(result);
             } else {
-                puts("array index out of bounds");
-                while (true)
-                    ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             ++pc;
             break;
@@ -1774,10 +1837,8 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                // TODO: throw error
-                puts("array index out of bounds!");
-                while (true)
-                    ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             ++pc;
             break;
@@ -1938,9 +1999,8 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 *array->address(index) = value;
             } else {
-                puts("array index out of bounds");
-                while (true)
-                    ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             ++pc;
             break;
@@ -1964,9 +2024,8 @@ Exception* execute_bytecode(Class* clz,
                 u8 value = *array->address(index);
                 push_operand_i(value);
             } else {
-                puts("array index out of bounds");
-                while (true)
-                    ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             break;
         }
@@ -1994,10 +2053,8 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                // TODO: throw error
-                puts("array index out of bounds!");
-                while (true)
-                    ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             ++pc;
             break;
@@ -2026,9 +2083,8 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand_i(result);
             } else {
-                puts("array index out of bounds");
-                while (true)
-                    ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
             }
             ++pc;
             break;
