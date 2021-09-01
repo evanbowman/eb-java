@@ -9,8 +9,7 @@
 
 // NOTE: Creating a constant pool in memory for every class takes up a lot of
 // space. We have a number of implementations of a constant pool, some are
-// backed by an allocation, and some run directly from the class file (much
-// slower).
+// backed by an allocation, and some run directly from the class file.
 
 
 
@@ -56,6 +55,18 @@ public:
 
 // The fastest constant pool implementation. All lookups are O(1), as the class
 // stores an array of pointers into the classfile.
+//
+// While this class speeds things up somewhat over the ConstantPoolCompactImpl,
+// the main performance benefit shows up when classes have a really big constant
+// pool, in which case we may not want to allocate a big table, as this jvm is
+// intended for small microcontrollers. In other words, this class improves
+// performance over the ConstantPoolCachingImpl, but not necessarily enough of
+// an improvement to make this the default constant pool, considering the
+// increased memory usage (note: I'm not speculating here, I have in fact
+// measured the performance).
+//
+// FIXME: this ArrayImpl code maybe out of date, and should be retested
+// before being used in this project.
 class ConstantPoolArrayImpl : public ConstantPool {
 public:
     const char* parse(const ClassFile::HeaderSection1& src) override;
@@ -67,23 +78,15 @@ public:
     }
 
 
-    void reserve_fields(int) override
-    {
-        while (true)
-            ; // TODO
-    }
+    void reserve_fields(int field_count) override;
 
 
-    void bind_field(u16 index, SubstitutionField field) override
-    {
-        while (true)
-            ; // TODO
-        // array_[index - 1] = (const ClassFile::ConstantHeader*)field;
-    }
+    void bind_field(u16 index, SubstitutionField field) override;
 
 
 private:
     const ClassFile::ConstantHeader** array_ = nullptr;
+    SubstitutionField* fields_ = nullptr;
 };
 
 
@@ -91,7 +94,7 @@ private:
 // This class uses minimal extra memory.
 class ConstantPoolCompactImpl : public ConstantPool {
 public:
-    // Requires O(n), where n is the number of constants in the constant pool.
+    // Runs in O(n), where n is the number of constants in the constant pool.
     const ClassFile::ConstantHeader* load(u16 index) override
     {
         index -= 1;
@@ -176,10 +179,12 @@ private:
 // implementation, but caches some recent constant lookups in a local buffer.
 class ConstantPoolCompactCachingImpl : public ConstantPoolCompactImpl {
 private:
+    static const int cache_entries = 4;
+
     struct CacheEntry {
         u16 index_ = 0;
         const ClassFile::ConstantHeader* constant_ = nullptr;
-    } cache_[4];
+    } cache_[cache_entries];
 
     u8 evict_ = 0;
 
@@ -197,7 +202,7 @@ public:
         CacheEntry cached;
         cached.index_ = index;
         cached.constant_ = found;
-        cache_[evict_++ % 4] = cached;
+        cache_[evict_++ % cache_entries] = cached;
 
         return found;
     }

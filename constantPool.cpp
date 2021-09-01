@@ -10,10 +10,6 @@ namespace java {
 
 const char* ConstantPoolArrayImpl::parse(const ClassFile::HeaderSection1& src)
 {
-    // FIXME: this dead code does not account for double/long taking up two
-    // spaces in the constant pool. needs to be fixed for if/when we resurrect
-    // this stuff.
-
     array_ = (const ClassFile::ConstantHeader**)jvm::classmemory::allocate(
         sizeof(ClassFile::ConstantHeader*) * src.constant_count_.get() - 1,
         alignof(ClassFile::ConstantHeader*));
@@ -22,11 +18,35 @@ const char* ConstantPoolArrayImpl::parse(const ClassFile::HeaderSection1& src)
 
 
     for (int i = 0; i < src.constant_count_.get() - 1; ++i) {
-        array_[i] = (const ClassFile::ConstantHeader*)str;
+        auto c = (const ClassFile::ConstantHeader*)str;
+
+        array_[i] = c;
         str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
+
+        if (c->tag_ == ClassFile::t_double or
+            c->tag_ == ClassFile::t_long) {
+            ++i;
+        }
     }
 
     return str;
+}
+
+
+
+void ConstantPoolArrayImpl::reserve_fields(int field_count)
+{
+    fields_ = (SubstitutionField*)jvm::classmemory::allocate(sizeof(SubstitutionField) * field_count,
+                                                             alignof(SubstitutionField));
+}
+
+
+
+void ConstantPoolArrayImpl::bind_field(u16 index, SubstitutionField field)
+{
+    *fields_ = field;
+    array_[index - 1] = (const ClassFile::ConstantHeader*)fields_;
+    ++fields_;
 }
 
 

@@ -278,8 +278,7 @@ Class* parse_classfile(Slice classname, const char* str)
         return nullptr;
     }
 
-    auto clz =
-        (Class*)jvm::classmemory::allocate(sizeof(Class), alignof(Class));
+    auto clz = jvm::classmemory::allocate<Class>();
 
     if (not clz) {
         puts("failed to alloc constant class memory");
@@ -294,7 +293,7 @@ Class* parse_classfile(Slice classname, const char* str)
     str += sizeof(ClassFile::HeaderSection1);
 
 
-    clz->constants_ = new ConstantPoolCompactImpl();
+    clz->constants_ = jvm::classmemory::allocate<ConstantPoolCompactImpl>();
     str = clz->constants_->parse(*h1);
 
     auto h2 = reinterpret_cast<const ClassFile::HeaderSection2*>(str);

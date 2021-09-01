@@ -36,6 +36,18 @@ void* allocate(size_t size, size_t align);
 
 
 
+template <typename T, typename ...Args>
+T* allocate(Args&& ...args)
+{
+    if (auto mem = (T*)allocate(sizeof(T), alignof(T))) {
+        new (mem) T(std::forward<Args>(args)...);
+        return mem;
+    }
+    return nullptr;
+}
+
+
+
 } // namespace classmemory
 
 

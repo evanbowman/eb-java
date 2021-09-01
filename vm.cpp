@@ -2402,6 +2402,8 @@ void bootstrap()
     // why I do not provide the source code. It's hand-rolled java bytecode.
     if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
                                          (const char*)object_class_data)) {
+        puts("successfully loaded Object root!");
+
         obj_class->super_ = nullptr;
 
         primitive_array_class.super_ = obj_class;
