@@ -1982,8 +1982,7 @@ Exception* execute_bytecode(Class* clz,
             pc += 3;
             break;
 
-        case Bytecode::castore:
-        case Bytecode::bastore: {
+        case Bytecode::castore: {
             auto array = (Array*)load_operand(2);
             u8 value = load_operand_i(0);
             s32 index = load_operand_i(1);
@@ -2008,8 +2007,34 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
-        case Bytecode::caload:
-        case Bytecode::baload: {
+        case Bytecode::bastore: {
+            auto array = (Array*)load_operand(2);
+            s8 value = load_operand_i(0);
+            s32 index = load_operand_i(1);
+
+            pop_operand();
+            pop_operand();
+            pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
+
+            if (array->check_bounds(index)) {
+                *array->address(index) = value;
+            } else {
+                puts("out of bounds!?");
+                while (1) ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
+            }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::caload: {
             auto array = (Array*)load_operand(1);
             s32 index = load_operand_i(0);
 
@@ -2029,6 +2054,34 @@ Exception* execute_bytecode(Class* clz,
                 push_operand_a(*(Object*)TODO_throw_proper_exception());
                 goto THROW;
             }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::baload: {
+            auto array = (Array*)load_operand(1);
+            s32 index = load_operand_i(0);
+
+            pop_operand();
+            pop_operand();
+
+            if (array == nullptr) {
+                puts("TODO: nullptr exception");
+                while (true)
+                    ;
+            }
+
+            if (array->check_bounds(index)) {
+                s8 value = *array->address(index);
+                push_operand_i(value);
+            } else {
+                puts("throw");
+                std::cout << index << std::endl;
+                while (1) ;
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
+            }
+            ++pc;
             break;
         }
 
@@ -2407,8 +2460,10 @@ int start(Class* entry_point)
         argc.argument_count_ = 1;
         argc.operand_count_ = 1;
 
+
         auto exn = java::jvm::invoke_method(
             entry_point, nullptr, entry, argc, type_signature);
+
         if (exn) {
             puts("uncaught exception from main method");
             return 1;
