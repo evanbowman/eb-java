@@ -373,9 +373,14 @@ struct Bytecode {
         ldiv            = 0x6d,
         lneg            = 0x75,
         land            = 0x7f,
+        lor             = 0x81,
+        lrem            = 0x71,
         lconst_0        = 0x09,
         lconst_1        = 0x0a,
         lreturn         = 0xad,
+        l2d             = 0x8a,
+        l2f             = 0x89,
+        l2i             = 0x88,
         ireturn         = 0xac,
         if_acmpeq       = 0xa5,
         if_acmpne       = 0xa6,
@@ -419,13 +424,33 @@ struct Bytecode {
         fastore         = 0x51,
         fcmpl           = 0x95,
         fcmpg           = 0x96,
+        dcmpl           = 0x97,
+        dcmpg           = 0x98,
         freturn         = 0xae,
+        dreturn         = 0xaf,
         d2f             = 0x90,
         d2i             = 0x8e,
         d2l             = 0x8f,
         dadd            = 0x63,
+        dsub            = 0x67,
+        dmul            = 0x6b,
+        ddiv            = 0x6f,
+        dneg            = 0x77,
+        drem            = 0x73,
         daload          = 0x31,
         dastore         = 0x52,
+        dstore          = 0x39,
+        dstore_0        = 0x47,
+        dstore_1        = 0x48,
+        dstore_2        = 0x49,
+        dstore_3        = 0x4a,
+        dload           = 0x18,
+        dload_0         = 0x26,
+        dload_1         = 0x27,
+        dload_2         = 0x28,
+        dload_3         = 0x29,
+        dconst_0        = 0x0e,
+        dconst_1        = 0x0f,
         saload          = 0x35,
         sastore         = 0x56,
         sipush          = 0x11,
@@ -1311,9 +1336,18 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::idiv: {
-            const s32 result = load_operand_i(1) / load_operand_i(0);
+            auto value = load_operand_i(1);
+            auto divisor = load_operand_i(0);
+
             pop_operand();
             pop_operand();
+
+            if (divisor == 0) {
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
+            }
+            const s32 result = value / divisor;
+
             push_operand_i(result);
             ++pc;
             break;
@@ -1697,6 +1731,33 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
+        case Bytecode::dcmpg:
+        case Bytecode::dcmpl: {
+            auto rhs = load_wide_operand_d(0);
+            auto lhs = load_wide_operand_d(2);
+
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+
+            if (lhs > rhs) {
+                push_operand_i(1);
+            } else if (lhs == rhs) {
+                push_operand_i(0);
+            } else if (lhs < rhs) {
+                push_operand_i(-1);
+            } else {
+                if (bytecode[pc] == Bytecode::dcmpg) {
+                    push_operand_i(1);
+                } else {
+                    push_operand_i(-1);
+                }
+            }
+            ++pc;
+            break;
+        }
+
         case Bytecode::d2f: {
             double d = load_wide_operand_d(0);
             pop_operand();
@@ -1725,13 +1786,70 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::dadd: {
-            auto lhs = load_wide_operand_d(0);
-            pop_operand();
-            pop_operand();
             auto rhs = load_wide_operand_d(0);
             pop_operand();
             pop_operand();
+            auto lhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
             push_wide_operand_d(lhs + rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dsub: {
+            auto rhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            auto lhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            push_wide_operand_d(lhs - rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dmul: {
+            auto rhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            auto lhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            push_wide_operand_d(lhs * rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::ddiv: {
+            auto rhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            auto lhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            push_wide_operand_d(lhs / rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::drem: {
+            auto rhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            auto lhs = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            push_wide_operand_d(fmod(lhs, rhs));
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dneg: {
+            auto value = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            push_wide_operand_d(-value);
             ++pc;
             break;
         }
@@ -1782,6 +1900,103 @@ Exception* execute_bytecode(Class* clz,
                 push_operand_a(*(Object*)TODO_throw_proper_exception());
                 goto THROW;
             }
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dload: {
+            double val;
+            load_wide_local(bytecode[pc + 1], &val);
+            push_wide_operand_d(val);
+            pc += 2;
+            break;
+        }
+
+        case Bytecode::dload_0: {
+            double val;
+            load_wide_local(0, &val);
+            push_wide_operand_d(val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dload_1: {
+            double val;
+            load_wide_local(1, &val);
+            push_wide_operand_d(val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dload_2: {
+            double val;
+            load_wide_local(2, &val);
+            push_wide_operand_d(val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dload_3: {
+            double val;
+            load_wide_local(3, &val);
+            push_wide_operand_d(val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dconst_0: {
+            push_wide_operand_d(0.0);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dconst_1: {
+            push_wide_operand_d(1.0);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dstore: {
+            auto val = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            store_wide_local(bytecode[pc + 1], &val);
+            pc += 2;
+            break;
+        }
+
+        case Bytecode::dstore_0: {
+            auto val = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            store_wide_local(0, &val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dstore_1: {
+            auto val = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            store_wide_local(1, &val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dstore_2: {
+            auto val = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            store_wide_local(2, &val);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::dstore_3: {
+            auto val = load_wide_operand_d(0);
+            pop_operand();
+            pop_operand();
+            store_wide_local(3, &val);
             ++pc;
             break;
         }
@@ -2123,9 +2338,6 @@ Exception* execute_bytecode(Class* clz,
                 s8 value = *array->address(index);
                 push_operand_i(value);
             } else {
-                puts("throw");
-                std::cout << index << std::endl;
-                while (1) ;
                 push_operand_a(*(Object*)TODO_throw_proper_exception());
                 goto THROW;
             }
@@ -2203,6 +2415,33 @@ Exception* execute_bytecode(Class* clz,
         case Bytecode::lconst_1: {
             s64 value = 1;
             push_wide_operand_l(value);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::l2d: {
+            double arg = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            push_wide_operand_d(arg);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::l2f: {
+            float arg = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            push_operand_f(arg);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::l2i: {
+            s32 arg = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            push_operand_i(arg);
             ++pc;
             break;
         }
@@ -2329,6 +2568,12 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
             pop_operand();
+
+            if (rhs == 0) {
+                push_operand_a(*(Object*)TODO_throw_proper_exception());
+                goto THROW;
+            }
+
             push_wide_operand_l(lhs / rhs);
             ++pc;
             break;
@@ -2379,6 +2624,30 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
+        case Bytecode::lor: {
+            auto lhs = load_wide_operand_l(2);
+            auto rhs = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(lhs | rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lrem: {
+            auto lhs = load_wide_operand_l(2);
+            auto rhs = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(lhs % rhs);
+            ++pc;
+            break;
+        }
+
         case Bytecode::__goto:
             pc += ((network_s16*)(bytecode + pc + 1))->get();
             break;
@@ -2392,6 +2661,7 @@ Exception* execute_bytecode(Class* clz,
         case Bytecode::ireturn:
         case Bytecode::areturn:
         case Bytecode::freturn:
+        case Bytecode::dreturn:
             return nullptr;
 
         case Bytecode::invokestatic: {

@@ -41,10 +41,14 @@ void print_stats(void (*print_str_callback)(const char*))
     static const int width = 80;
     static const int height = 5;
 
+    const auto im = (u8*)heap_alloc - heap_;
+    const auto cm = JVM_HEAP_SIZE - (heap_end - heap_);
+
+
     int total = width * height;
-    auto begin = total * (float((u8*)heap_alloc - heap_) / JVM_HEAP_SIZE);
+    auto begin = total * (float(im) / JVM_HEAP_SIZE);
     auto middle = total -
-        (begin + total * (float(JVM_HEAP_SIZE - (heap_end - heap_)) / JVM_HEAP_SIZE));
+        (begin + total * (float(cm) / JVM_HEAP_SIZE));
 
     char matrix[width][height];
 
@@ -74,6 +78,28 @@ void print_stats(void (*print_str_callback)(const char*))
     }
 
     char buffer[100];
+
+    snprintf(buffer,
+             sizeof buffer,
+             "objects %zu bytes -->", im);
+
+    print_str_callback(buffer);
+
+    const auto prefix_len = strlen(buffer);
+
+    snprintf(buffer,
+             sizeof buffer,
+             "<-- class info %zu bytes\n", cm);
+
+    const auto suffix_len = strlen(buffer);
+
+    for (int i = 0; i < (int)(81 - (prefix_len + suffix_len)); ++i) {
+        print_str_callback(" ");
+    }
+
+    print_str_callback(buffer);
+
+
     snprintf(buffer,
              sizeof buffer,
              "heap used %zu, remaining "

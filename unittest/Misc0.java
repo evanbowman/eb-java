@@ -1,7 +1,7 @@
 package test;
 
 
-class Test2 {
+class Misc0 {
 
     public Object test = null;
     public char t2 = 'a';
