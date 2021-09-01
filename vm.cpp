@@ -2402,8 +2402,6 @@ void bootstrap()
     // why I do not provide the source code. It's hand-rolled java bytecode.
     if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
                                          (const char*)object_class_data)) {
-        puts("successfully loaded Object root!");
-
         obj_class->super_ = nullptr;
 
         primitive_array_class.super_ = obj_class;
@@ -2441,7 +2439,6 @@ void bootstrap()
 
     if (parse_classfile(Slice::from_c_str("java/lang/Throwable"),
                         (const char*)throwable_class_data)) {
-        puts("loaded throwable");
     }
 }
 
@@ -2459,7 +2456,6 @@ int start(Class* entry_point)
         ArgumentInfo argc;
         argc.argument_count_ = 1;
         argc.operand_count_ = 1;
-
 
         auto exn = java::jvm::invoke_method(
             entry_point, nullptr, entry, argc, type_signature);

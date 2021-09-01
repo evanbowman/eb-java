@@ -17,6 +17,7 @@ static void* heap_alloc = heap_;
 
 
 
+[[maybe_unused]]
 static size_t used()
 {
     return (JVM_HEAP_SIZE -
@@ -38,12 +39,12 @@ Object* allocate(size_t size)
         auto result = (Object*)heap_alloc;
         heap_alloc = ((u8*)heap_alloc) + size;
 
-        printf("heap allocate instance %p, inst size %zu, used %zu, remaining "
-               "%zu\n",
-               heap_alloc,
-               size,
-               used(),
-               heap_end - (u8*)heap_alloc);
+        // printf("heap allocate instance %p, inst size %zu, used %zu, remaining "
+        //        "%zu\n",
+        //        heap_alloc,
+        //        size,
+        //        used(),
+        //        heap_end - (u8*)heap_alloc);
 
         return result;
     }
@@ -84,11 +85,11 @@ void* allocate(size_t size, size_t alignment)
 
     heap::heap_end = alloc_ptr;
 
-    printf("cm allocate %p, inst size %zu, used: %zu, remaining %zu\n",
-           alloc_ptr,
-           size,
-           heap::used(),
-           heap::heap_end - (u8*)heap::heap_alloc);
+    // printf("cm allocate %p, inst size %zu, used: %zu, remaining %zu\n",
+    //        alloc_ptr,
+    //        size,
+    //        heap::used(),
+    //        heap::heap_end - (u8*)heap::heap_alloc);
 
 
     return alloc_ptr;
