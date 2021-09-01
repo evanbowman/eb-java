@@ -354,6 +354,7 @@ struct Bytecode {
         lload_1         = 0x1f,
         lload_2         = 0x20,
         lload_3         = 0x21,
+        lcmp            = 0x94,
         ladd            = 0x61,
         land            = 0x7f,
         lconst_0        = 0x09,
@@ -512,7 +513,7 @@ void bind_arguments(Object* self,
                 break;
 
             case 'J': {
-                auto l = load_wide_local_l(stack_load_index);
+                auto l = load_wide_operand_l(stack_load_index - 1);
                 store_wide_local(local_param_index, &l);
                 local_param_index += 2;
                 stack_load_index -= 2;
@@ -521,7 +522,7 @@ void bind_arguments(Object* self,
             }
 
             case 'D': {
-                auto d = load_wide_local_d(stack_load_index);
+                auto d = load_wide_operand_d(stack_load_index - 1);
                 store_wide_local(local_param_index, &d);
                 local_param_index += 2;
                 stack_load_index -= 2;
@@ -2132,6 +2133,24 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
+        case Bytecode::lcmp: {
+            auto lhs = load_wide_operand_l(2);
+            auto rhs = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            if (lhs == rhs) {
+                push_operand_i(0);
+            } else if (lhs > rhs) {
+                push_operand_i(1);
+            } else {
+                push_operand_i(-1);
+            }
+            ++pc;
+            break;
+        }
+
         case Bytecode::ladd: {
             auto lhs = load_wide_operand_l(0);
             auto rhs = load_wide_operand_l(2);
@@ -2304,7 +2323,7 @@ void bootstrap()
 
 
 
-void start(Class* entry_point)
+int start(Class* entry_point)
 {
     const auto type_signature = Slice::from_c_str("([Ljava/lang/String;)V");
 
@@ -2321,35 +2340,42 @@ void start(Class* entry_point)
             entry_point, nullptr, entry, argc, type_signature);
         if (exn) {
             puts("uncaught exception from main method");
+            return 1;
         }
+
+        return 0;
     }
+
+    return 1;
 }
 
 
 
-void start_from_jar(const char* jar_file_bytes, Slice classpath)
+int start_from_jar(const char* jar_file_bytes, Slice classpath)
 {
     jar_file_data = jar_file_bytes;
 
     bootstrap();
 
     if (auto clz = java::jvm::import(classpath)) {
-        start(clz);
+        return start(clz);
     } else {
         puts("failed to import main class");
+        return 1;
     }
 }
 
 
 
-void start_from_classfile(const char* class_file_bytes, Slice classpath)
+int start_from_classfile(const char* class_file_bytes, Slice classpath)
 {
     bootstrap();
 
     if (auto clz = parse_classfile(classpath, class_file_bytes)) {
-        start(clz);
+        return start(clz);
     } else {
         puts("failed to import main class");
+        return 1;
     }
 }
 
@@ -2392,4 +2418,6 @@ int main(int argc, char** argv)
     } else {
         java::jvm::start_from_classfile(str.c_str(), classpath);
     }
+
+    return 0;
 }
