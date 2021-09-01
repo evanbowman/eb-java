@@ -16,6 +16,12 @@ struct Object;
 
 
 struct Class {
+
+    struct {
+        u32 is_class_ : 1;
+        u32 reserved_ : 31;
+    } flags_;
+
     ConstantPool* constants_;
 
     const ClassFile::MethodInfo** methods_ = nullptr;
