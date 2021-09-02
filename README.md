@@ -8,7 +8,15 @@ By default, the virtual machine uses 256kb of RAM for its heap, and a bit more m
 
 I have not finished this project yet, but eb-java does currently implement almost all of the Java instruction set (I'm still working on invokedynamic :)), and I've written a number of unit tests.
 
+The project, in its current status, compiles a command line application called java:
+```
+usage: java <jar|classfile> <classpath>
+```
+eb-java supports jar files, but you need to strip compression from the jars before running them. The vm does not support compressed jars, as I'm intending to use this code on a microcontroller (gba), where compressed jars would limit the size of an executable due to limited ram. See the unit test directory, where I build a jar without compression.
+
+
 Remaining work:
 * Write the garbage collector (I've written GCs before, so I don't actually consider this to be much of a hurdle).
 * Implement more of the standard JRE classes
 * Finish implementing invokedynamic
+* More unit tests
