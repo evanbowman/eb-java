@@ -490,6 +490,21 @@ static Buffer<ClassTableEntry, 100> class_table;
 
 
 
+void invoke_static_block(Class* clz);
+
+
+
+Class* load_class(Slice classpath, const char* classfile_data)
+{
+    if (auto clz = parse_classfile(classpath, classfile_data)) {
+        invoke_static_block(clz);
+        return clz;
+    }
+    return nullptr;
+}
+
+
+
 Class* import(Slice classpath)
 {
     if (jar_file_data == nullptr) {
@@ -500,9 +515,7 @@ Class* import(Slice classpath)
 
     auto data = jar::load_classfile(jar_file_data, classpath);
     if (data.length_) {
-        if (auto clz = parse_classfile(classpath, data.ptr_)) {
-            return clz;
-        }
+        return load_class(classpath, data.ptr_);
     }
     return nullptr;
 }
@@ -2881,6 +2894,25 @@ INCBIN(runtime_class, "Runtime.class");
 INCBIN(throwable_class, "Throwable.class");
 
 
+
+void invoke_static_block(Class* clz)
+{
+    const auto name = Slice::from_c_str("<clinit>");
+    const auto signature = Slice::from_c_str("()V");
+
+    if (auto mtd = clz->load_method(name, signature)) {
+        ArgumentInfo argc;
+        auto exn = invoke_method(clz, nullptr, mtd, argc, signature);
+        if (exn) {
+            // TODO: what to do! I'm not really sure where we should propagate
+            // an exception from a static block...
+            while (true) ;
+        }
+    }
+}
+
+
+
 Object* runtime = nullptr;
 
 
@@ -2891,17 +2923,18 @@ void bootstrap()
     // why I do not provide the source code. It's hand-rolled java bytecode.
     if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
                                          (const char*)object_class_data)) {
-        puts("successfully loaded Object root!");
-
         obj_class->super_ = nullptr;
 
         primitive_array_class.super_ = obj_class;
         reference_array_class.super_ = obj_class;
         return_address_class.super_ = obj_class;
+
+        // Needs to be deferred until we've completed the above steps.
+        invoke_static_block(obj_class);
     }
 
     if (auto runtime_class =
-            parse_classfile(Slice::from_c_str("java/lang/Runtime"),
+            load_class(Slice::from_c_str("java/lang/Runtime"),
                             (const char*)runtime_class_data)) {
 
         runtime = make_instance_impl(runtime_class);
@@ -2942,8 +2975,8 @@ void bootstrap()
                                 });
     }
 
-    if (parse_classfile(Slice::from_c_str("java/lang/Throwable"),
-                        (const char*)throwable_class_data)) {
+    if (load_class(Slice::from_c_str("java/lang/Throwable"),
+                   (const char*)throwable_class_data)) {
     }
 }
 
@@ -3008,6 +3041,7 @@ int start_from_classfile(const char* class_file_bytes, Slice classpath)
     bootstrap();
 
     if (auto clz = parse_classfile(classpath, class_file_bytes)) {
+        invoke_static_block(clz);
         return start(clz);
     } else {
         puts("failed to import main class");
