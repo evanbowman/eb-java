@@ -316,26 +316,16 @@ Class* parse_classfile(Slice classname, const char* str)
     auto h4 = reinterpret_cast<const ClassFile::HeaderSection4*>(str);
     str += sizeof(ClassFile::HeaderSection4);
 
+    clz->methods_ = (void*)h4; // Argh, I know. The class may or may not point
+                               // to constant data though, depending on whether
+                               // it has a method table, or whether it's running
+                               // directly off of the classfile.
 
     if (h4->methods_count_.get()) {
-
-        clz->methods_ =
-            (const ClassFile::MethodInfo**)jvm::classmemory::allocate(
-                sizeof(ClassFile::MethodInfo*) * h4->methods_count_.get(),
-                alignof(ClassFile::MethodInfo));
-
-        if (clz->methods_ == nullptr) {
-            puts("failed to alloc method table");
-            while (true)
-                ; // TODO: raise error...
-        }
-
-        clz->method_count_ = h4->methods_count_.get();
 
         for (int i = 0; i < h4->methods_count_.get(); ++i) {
             auto method = (ClassFile::MethodInfo*)str;
             str += sizeof(ClassFile::MethodInfo);
-            clz->methods_[i] = method;
 
             for (int i = 0; i < method->attributes_count_.get(); ++i) {
                 auto attr = (ClassFile::AttributeInfo*)str;

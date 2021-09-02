@@ -1,6 +1,7 @@
 #include "class.hpp"
 #include "object.hpp"
 #include <stdio.h>
+#include "methodTable.hpp"
 
 
 
@@ -23,26 +24,46 @@ const ClassFile::HeaderSection2* Class::interfaces() const
 
 
 
-const ClassFile::MethodInfo* Class::load_method(const char* name,
+const ClassFile::MethodInfo* Class::load_method(Slice method_name,
                                                 Slice type_signature)
 {
-    auto name_slc = Slice::from_c_str(name);
+    if (not (flags_ &Flag::has_method_table)) {
+        // We can run without a method table, by searching the raw classfile.
 
-    if (methods_) {
-        for (int i = 0; i < method_count_; ++i) {
+        auto methods = (const ClassFile::HeaderSection4*)methods_;
+
+        const auto method_count = methods->methods_count_.get();
+
+        const char* str = (const char*)methods;
+        str += sizeof(ClassFile::HeaderSection4);
+
+        for (int i = 0; i < method_count; ++i) {
+            auto method = (const ClassFile::MethodInfo*)str;
 
             const auto method_name_str =
-                constants_->load_string(methods_[i]->name_index_.get());
+                constants_->load_string(method->name_index_.get());
 
-            const auto method_type_str =
-                constants_->load_string(methods_[i]->descriptor_index_.get());
+            if (method_name_str == method_name) {
+                const auto method_type_str =
+                    constants_->load_string(method->descriptor_index_.get());
 
-            if (method_name_str == name_slc and
-                method_type_str == type_signature) {
-                return methods_[i];
+                if (method_type_str == type_signature) {
+                    return method;
+                }
+            }
+
+            str += sizeof(ClassFile::MethodInfo);
+            for (int i = 0; i < method->attributes_count_.get(); ++i) {
+                auto attr = (ClassFile::AttributeInfo*)str;
+                str += sizeof(ClassFile::AttributeInfo) +
+                    attr->attribute_length_.get();
             }
         }
+    } else {
+        auto method_table = (MethodTable*)methods_;
+        return method_table->load_method(this, method_name, type_signature);
     }
+
     return nullptr;
 }
 

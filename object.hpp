@@ -10,11 +10,11 @@ namespace java {
 
 struct Object {
 
-    struct {
-        u32 is_class_ : 1;
-        u32 mark_bit_ : 1;
-        u32 reserved_ : 30;
-    } flags_;
+    enum Flag {
+        is_class = (1 << 0)
+    };
+
+    u32 flags_;
 
     Class* class_;
 

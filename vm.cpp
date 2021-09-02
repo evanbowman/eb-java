@@ -699,18 +699,8 @@ Class* load_class(Class* current_module, u16 class_index)
 std::pair<const ClassFile::MethodInfo*, Class*>
 lookup_method(Class* clz, Slice lhs_name, Slice lhs_type)
 {
-    if (clz->methods_) {
-        for (int i = 0; i < clz->method_count_; ++i) {
-            u16 name_index = clz->methods_[i]->name_index_.get();
-            u16 type_index = clz->methods_[i]->descriptor_index_.get();
-
-            auto rhs_name = clz->constants_->load_string(name_index);
-            auto rhs_type = clz->constants_->load_string(type_index);
-
-            if (lhs_type == rhs_type and lhs_name == rhs_name) {
-                return {clz->methods_[i], clz};
-            }
-        }
+    if (auto mtd = clz->load_method(lhs_name, lhs_type)) {
+        return {mtd, clz};
     }
 
     if (clz->super_ == nullptr) {
@@ -2842,7 +2832,8 @@ int start(Class* entry_point)
     const auto type_signature = Slice::from_c_str("([Ljava/lang/String;)V");
 
 
-    if (auto entry = entry_point->load_method("main", type_signature)) {
+    if (auto entry = entry_point->load_method(Slice::from_c_str("main"),
+                                              type_signature)) {
 
         push_operand_p(nullptr); // String[] args
 

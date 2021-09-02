@@ -1,6 +1,7 @@
 #include "jni.hpp"
 #include "memory.hpp"
 #include "vm.hpp"
+#include "methodTable.hpp"
 
 
 
@@ -17,37 +18,32 @@ void bind_native_method(Class* clz,
         return;
     }
 
-    for (int i = 0; i < clz->method_count_; ++i) {
-        const auto method_name_str =
-            clz->constants_->load_string(clz->methods_[i]->name_index_.get());
+    // We need a way to bind a native method to this class. If we haven't
+    // allocated a method table, we have nowhere to attach the native method. So
+    // using the native interface requires allocation of a method table, if one
+    // does not yet exist.
+    if (not (clz->flags_ & Class::Flag::has_method_table)) {
+        clz->flags_ |= Class::Flag::has_method_table;
 
-        // FIXME: check method type signature too, to avoid issues with
-        // overloaded methods.
+        puts("allocate method table while binding native method");
 
-        if (method_name_str == method_name) {
-            auto stub = (MethodStub*)jvm::classmemory::allocate(
-                sizeof(MethodStub), alignof(MethodStub));
-
-            auto old_method = clz->methods_[i];
-
-            memcpy(
-                &stub->method_info_, old_method, sizeof(ClassFile::MethodInfo));
-
-            stub->method_info_.attributes_count_.set(1);
-
-            // FIXME: Is this safe? We need a way to distinguish between native
-            // methods and "Code", so we're using a hard-coded constant.  A
-            // classfile's constant pool would need to be massive for this ever
-            // to create a problem...
-            stub->attribute_info_.attribute_name_index_.set(magic);
-            stub->attribute_info_.attribute_length_.set(magic);
-            stub->implementation_ = implementation;
-
-            clz->methods_[i] = (ClassFile::MethodInfo*)stub;
-
-            return;
-        }
+        // NOTE: If the has_method_table flag is false, the methods_ field will
+        // be assigned to the section of the classfile consisting of the method
+        // implementations.
+        clz->methods_ =
+            jvm::classmemory::allocate<MethodTableImpl>((const ClassFile::HeaderSection4*)
+                                                        clz->methods_);
     }
+
+    auto stub = (MethodStub*)jvm::classmemory::allocate(
+            sizeof(MethodStub), alignof(MethodStub));
+
+    stub->implementation_ = implementation;
+
+    ((MethodTable*)clz->methods_)->bind_native_method(clz,
+                                                      method_name,
+                                                      method_type_signature,
+                                                      stub);
 }
 
 
