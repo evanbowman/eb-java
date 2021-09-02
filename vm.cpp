@@ -1471,8 +1471,8 @@ Exception* execute_bytecode(Class* clz,
             break;
         }
 
-        // FIXME: ishl and ishr may not be implemented correction (sign
-        // extension and negative numbers).
+        // FIXME: ishl and ishr may not be implemented correctly (sign extension
+        // and negative numbers).
         case Bytecode::ishl: {
             const s32 result = load_operand_i(1) << (load_operand_i(0) & 0x1f);
             pop_operand();
