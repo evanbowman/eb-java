@@ -181,6 +181,39 @@ struct ClassFile {
         network_u16 name_and_type_index_;
     };
 
+    struct BootstrapMethod {
+        network_u16 bootstrap_method_ref_;
+        network_u16 num_bootstrap_arguments_;
+        // network_u16 bootstrap_arguments[num_bootstrap_arguments_];
+
+        size_t size() const
+        {
+            return sizeof(BootstrapMethod) +
+                   num_bootstrap_arguments_.get() * sizeof(network_u16);
+        }
+    };
+
+    struct BootstrapMethodsAttribute {
+        AttributeInfo header_;
+        network_u16 num_bootstrap_methods_;
+
+        const BootstrapMethod* load(int index) const
+        {
+            auto mem = ((u8*)this) + sizeof(*this);
+
+            auto count = num_bootstrap_methods_.get();
+            for (int i = 0; i < count; ++i) {
+                auto method = (const BootstrapMethod*)mem;
+                if (i == index) {
+                    return method;
+                }
+                mem += method->size();
+            }
+
+            return nullptr;
+        }
+    };
+
 
     static inline size_t constant_size(const ConstantHeader* hdr)
     {

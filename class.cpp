@@ -1,12 +1,22 @@
 #include "class.hpp"
+#include "methodTable.hpp"
 #include "object.hpp"
 #include <stdio.h>
-#include "methodTable.hpp"
 
 
 
 namespace java {
 
+
+
+Class::OptionStaticField* Class::lookup_static(u16 index)
+{
+    auto ref = (const ClassFile::ConstantRef*)constants_->load(index);
+    auto nt = (const ClassFile::ConstantNameAndType*)constants_->load(
+        ref->name_and_type_index_.get());
+    auto name = constants_->load_string(nt->name_index_.get());
+    return lookup_static(name);
+}
 
 
 const ClassFile::HeaderSection2* Class::interfaces() const
@@ -27,7 +37,7 @@ const ClassFile::HeaderSection2* Class::interfaces() const
 const ClassFile::MethodInfo* Class::load_method(Slice method_name,
                                                 Slice type_signature)
 {
-    if (not (flags_ &Flag::has_method_table)) {
+    if (not(flags_ & Flag::has_method_table)) {
         // We can run without a method table, by searching the raw classfile.
 
         auto methods = (const ClassFile::HeaderSection4*)methods_;
@@ -56,7 +66,7 @@ const ClassFile::MethodInfo* Class::load_method(Slice method_name,
             for (int i = 0; i < method->attributes_count_.get(); ++i) {
                 auto attr = (ClassFile::AttributeInfo*)str;
                 str += sizeof(ClassFile::AttributeInfo) +
-                    attr->attribute_length_.get();
+                       attr->attribute_length_.get();
             }
         }
     } else {

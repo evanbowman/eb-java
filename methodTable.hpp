@@ -16,11 +16,12 @@ struct Class;
 
 class MethodTable {
 public:
-    virtual ~MethodTable() {}
+    virtual ~MethodTable()
+    {
+    }
 
-    virtual const ClassFile::MethodInfo* load_method(Class* clz,
-                                                     Slice method_name,
-                                                     Slice type_signature) = 0;
+    virtual const ClassFile::MethodInfo*
+    load_method(Class* clz, Slice method_name, Slice type_signature) = 0;
 
     virtual void bind_native_method(Class* clz,
                                     Slice method_name,
@@ -32,13 +33,11 @@ public:
 
 class MethodTableImpl : public MethodTable {
 public:
-
     MethodTableImpl(const ClassFile::HeaderSection4* classfile_data);
 
 
-    const ClassFile::MethodInfo* load_method(Class* clz,
-                                             Slice method_name,
-                                             Slice type_signature) override;
+    const ClassFile::MethodInfo*
+    load_method(Class* clz, Slice method_name, Slice type_signature) override;
 
 
     void bind_native_method(Class* clz,
@@ -53,4 +52,4 @@ private:
 
 
 
-}
+} // namespace java

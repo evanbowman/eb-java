@@ -10,9 +10,7 @@ namespace java {
 
 struct Object {
 
-    enum Flag {
-        is_class = (1 << 0)
-    };
+    enum Flag { is_class = (1 << 0) };
 
     u32 flags_;
 

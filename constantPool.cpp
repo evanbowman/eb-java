@@ -23,8 +23,7 @@ const char* ConstantPoolArrayImpl::parse(const ClassFile::HeaderSection1& src)
         array_[i] = c;
         str += ClassFile::constant_size((const ClassFile::ConstantHeader*)str);
 
-        if (c->tag_ == ClassFile::t_double or
-            c->tag_ == ClassFile::t_long) {
+        if (c->tag_ == ClassFile::t_double or c->tag_ == ClassFile::t_long) {
             ++i;
         }
     }
@@ -36,8 +35,8 @@ const char* ConstantPoolArrayImpl::parse(const ClassFile::HeaderSection1& src)
 
 void ConstantPoolArrayImpl::reserve_fields(int field_count)
 {
-    fields_ = (SubstitutionField*)jvm::classmemory::allocate(sizeof(SubstitutionField) * field_count,
-                                                             alignof(SubstitutionField));
+    fields_ = (SubstitutionField*)jvm::classmemory::allocate(
+        sizeof(SubstitutionField) * field_count, alignof(SubstitutionField));
 }
 
 

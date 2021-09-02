@@ -12,8 +12,8 @@
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
 #include "incbin.h"
 #include "memory.hpp"
-#include <math.h>
 #include <chrono>
+#include <math.h>
 
 
 
@@ -454,10 +454,13 @@ struct Bytecode {
         saload          = 0x35,
         sastore         = 0x56,
         sipush          = 0x11,
+        getstatic       = 0xb2,
+        putstatic       = 0xb3,
         getfield        = 0xb4,
         putfield        = 0xb5,
         __goto          = 0xa7,
         __goto_w        = 0xc8,
+        invokedynamic   = 0xba,
         invokestatic    = 0xb8,
         invokevirtual   = 0xb6,
         invokespecial   = 0xb7,
@@ -599,9 +602,7 @@ void bind_arguments(Object* self,
 
 
 
-
 Exception* TODO_throw_proper_exception();
-
 
 
 
@@ -739,8 +740,7 @@ static Exception* dispatch_method(Class* clz,
             // NullPointerException when trying to invoke a method, we need to
             // pop the arguments off the the stack before exiting.
 
-            for (int i = 0;
-                 i < argc.operand_count_ + 1; // +1 for self
+            for (int i = 0; i < argc.operand_count_ + 1; // +1 for self
                  ++i) {
                 pop_operand();
             }
@@ -805,7 +805,6 @@ Object* make_instance_impl(Class* clz)
 
 
 
-
 Object* make_instance(Class* current_module, u16 class_constant)
 {
     auto clz = load_class(current_module, class_constant);
@@ -823,7 +822,8 @@ Object* make_instance(Class* current_module, u16 class_constant)
 
 Exception* TODO_throw_proper_exception()
 {
-    return make_instance_impl(load_class_by_name(Slice::from_c_str("java/lang/Throwable")));
+    return make_instance_impl(
+        load_class_by_name(Slice::from_c_str("java/lang/Throwable")));
 }
 
 
@@ -948,6 +948,29 @@ bool handle_exception(Class* clz,
 
     } else {
         return false;
+    }
+}
+
+
+
+void make_invokedynamic_callsite(Class* clz, int bootstrap_method_index)
+{
+    auto opt = (Class::OptionBootstrapMethodInfo*)clz->load_option(
+        Class::Option::Type::bootstrap_methods);
+
+    if (opt) {
+        auto method_info =
+            opt->bootstrap_methods_->load(bootstrap_method_index);
+
+        if (method_info) {
+            [[maybe_unused]] auto ref =
+                (ClassFile::ConstantRef*)clz->constants_->load(
+                    method_info->bootstrap_method_ref_.get());
+
+            puts("TODO: finish implementing invokedynamic");
+            while (true)
+                ;
+        }
     }
 }
 
@@ -1140,7 +1163,7 @@ Exception* execute_bytecode(Class* clz,
             break;
 
         case Bytecode::athrow: {
-            THROW:
+        THROW:
             auto exn = (Object*)load_operand(0);
             pop_operand();
 
@@ -1274,8 +1297,94 @@ Exception* execute_bytecode(Class* clz,
                 return TODO_throw_proper_exception();
             }
 
-            obj->put_field(((network_u16*)&bytecode[pc + 1])->get(),
-                           val);
+            obj->put_field(((network_u16*)&bytecode[pc + 1])->get(), val);
+            pc += 3;
+            break;
+        }
+
+        case Bytecode::getstatic: {
+            auto index = ((network_u16*)&bytecode[pc + 1])->get();
+            if (auto opt = clz->lookup_static(index)) {
+                if (opt->is_object_) {
+                    Object* obj;
+                    memcpy(&obj, opt->data(), sizeof(Object*));
+                    push_operand_a(*obj);
+                } else {
+                    switch (opt->field_size_) {
+                    case 1: {
+                        u8 val = *opt->data();
+                        push_operand_i(val);
+                        break;
+                    }
+                    case 2: {
+                        s16 val;
+                        memcpy(&val, opt->data(), 2);
+                        push_operand_i(val);
+                        break;
+                    }
+                    case 4: {
+                        s32 val;
+                        memcpy(&val, opt->data(), 4);
+                        push_operand_i(val);
+                        break;
+                    }
+                    case 8: {
+                        s64 val;
+                        memcpy(&val, opt->data(), 8);
+                        push_wide_operand_l(val);
+                        break;
+                    }
+                    }
+                }
+            } else {
+                puts("TODO: critical error");
+                while (true)
+                    ;
+            }
+            pc += 3;
+            break;
+        }
+
+        case Bytecode::putstatic: {
+            auto index = ((network_u16*)&bytecode[pc + 1])->get();
+            if (auto opt = clz->lookup_static(index)) {
+                if (opt->is_object_) {
+                    auto val = load_operand(0);
+                    pop_operand();
+                    memcpy(opt->data(), &val, sizeof val);
+                } else {
+                    switch (opt->field_size_) {
+                    case 1: {
+                        *opt->data() = (u8)load_operand_i(0);
+                        pop_operand();
+                        break;
+                    }
+                    case 2: {
+                        s16 val = load_operand_i(0);
+                        pop_operand();
+                        memcpy(opt->data(), &val, 2);
+                        break;
+                    }
+                    case 4: {
+                        s32 val = load_operand_i(0);
+                        pop_operand();
+                        memcpy(opt->data(), &val, 4);
+                        break;
+                    }
+                    case 8: {
+                        s64 val = load_wide_operand_l(0);
+                        pop_operand();
+                        pop_operand();
+                        memcpy(opt->data(), &val, 8);
+                        break;
+                    }
+                    }
+                }
+            } else {
+                puts("TODO: critical error");
+                while (true)
+                    ;
+            }
             pc += 3;
             break;
         }
@@ -2279,7 +2388,8 @@ Exception* execute_bytecode(Class* clz,
                 *array->address(index) = value;
             } else {
                 puts("out of bounds!?");
-                while (1) ;
+                while (1)
+                    ;
                 push_operand_a(*(Object*)TODO_throw_proper_exception());
                 goto THROW;
             }
@@ -2654,6 +2764,20 @@ Exception* execute_bytecode(Class* clz,
         case Bytecode::dreturn:
             return nullptr;
 
+        case Bytecode::invokedynamic: {
+            auto info =
+                (const ClassFile::ConstantInvokeDynamic*)clz->constants_->load(
+                    ((network_u16*)(bytecode + pc + 1))->get());
+
+            make_invokedynamic_callsite(
+                clz, info->bootstrap_method_attr_index_.get());
+
+            while (true)
+                ;
+            pc += 5;
+            break;
+        }
+
         case Bytecode::invokestatic: {
             auto exn = dispatch_method(
                 clz, ((network_u16*)(bytecode + pc + 1))->get(), true, false);
@@ -2803,12 +2927,11 @@ void bootstrap()
                                         ;
                                 });
 
-        jni::bind_native_method(runtime_class,
-                                Slice::from_c_str("totalMemory"),
-                                Slice::from_c_str("TODO_:)"),
-                                [] {
-                                    push_wide_operand_l(jvm::heap::total());
-                                });
+        jni::bind_native_method(
+            runtime_class,
+            Slice::from_c_str("totalMemory"),
+            Slice::from_c_str("TODO_:)"),
+            [] { push_wide_operand_l(jvm::heap::total()); });
 
         jni::bind_native_method(runtime_class,
                                 Slice::from_c_str("freeMemory"),
@@ -2817,7 +2940,6 @@ void bootstrap()
                                     push_wide_operand_l(jvm::heap::total() -
                                                         jvm::heap::used());
                                 });
-
     }
 
     if (parse_classfile(Slice::from_c_str("java/lang/Throwable"),
@@ -2846,12 +2968,11 @@ int start(Class* entry_point)
         auto exn = java::jvm::invoke_method(
             entry_point, nullptr, entry, argc, type_signature);
         auto end = high_resolution_clock::now();
-        std::cout << std::chrono::duration_cast<nanoseconds>(end - start).count()
-                  << std::endl;
+        std::cout
+            << std::chrono::duration_cast<nanoseconds>(end - start).count()
+            << std::endl;
 
-        heap::print_stats([](const char* str) {
-            printf("%s", str);
-        });
+        heap::print_stats([](const char* str) { printf("%s", str); });
 
         if (exn) {
             puts("uncaught exception from main method");

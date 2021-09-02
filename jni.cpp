@@ -1,7 +1,7 @@
 #include "jni.hpp"
 #include "memory.hpp"
-#include "vm.hpp"
 #include "methodTable.hpp"
+#include "vm.hpp"
 
 
 
@@ -22,7 +22,7 @@ void bind_native_method(Class* clz,
     // allocated a method table, we have nowhere to attach the native method. So
     // using the native interface requires allocation of a method table, if one
     // does not yet exist.
-    if (not (clz->flags_ & Class::Flag::has_method_table)) {
+    if (not(clz->flags_ & Class::Flag::has_method_table)) {
         clz->flags_ |= Class::Flag::has_method_table;
 
         puts("allocate method table while binding native method");
@@ -30,20 +30,17 @@ void bind_native_method(Class* clz,
         // NOTE: If the has_method_table flag is false, the methods_ field will
         // be assigned to the section of the classfile consisting of the method
         // implementations.
-        clz->methods_ =
-            jvm::classmemory::allocate<MethodTableImpl>((const ClassFile::HeaderSection4*)
-                                                        clz->methods_);
+        clz->methods_ = jvm::classmemory::allocate<MethodTableImpl>(
+            (const ClassFile::HeaderSection4*)clz->methods_);
     }
 
-    auto stub = (MethodStub*)jvm::classmemory::allocate(
-            sizeof(MethodStub), alignof(MethodStub));
+    auto stub = (MethodStub*)jvm::classmemory::allocate(sizeof(MethodStub),
+                                                        alignof(MethodStub));
 
     stub->implementation_ = implementation;
 
-    ((MethodTable*)clz->methods_)->bind_native_method(clz,
-                                                      method_name,
-                                                      method_type_signature,
-                                                      stub);
+    ((MethodTable*)clz->methods_)
+        ->bind_native_method(clz, method_name, method_type_signature, stub);
 }
 
 

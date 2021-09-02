@@ -12,11 +12,9 @@ MethodTableImpl::MethodTableImpl(const ClassFile::HeaderSection4* h4)
     auto str = (const char*)h4;
     str += sizeof(ClassFile::HeaderSection4);
 
-    methods_ =
-        (const ClassFile::MethodInfo**)
-        jvm::classmemory::allocate(sizeof(ClassFile::MethodInfo*) *
-                                   h4->methods_count_.get(),
-                                   alignof(ClassFile::MethodInfo));
+    methods_ = (const ClassFile::MethodInfo**)jvm::classmemory::allocate(
+        sizeof(ClassFile::MethodInfo*) * h4->methods_count_.get(),
+        alignof(ClassFile::MethodInfo));
 
     if (methods_ == nullptr) {
         puts("failed to alloc method table");
@@ -34,16 +32,15 @@ MethodTableImpl::MethodTableImpl(const ClassFile::HeaderSection4* h4)
         for (int i = 0; i < method->attributes_count_.get(); ++i) {
             auto attr = (ClassFile::AttributeInfo*)str;
             str += sizeof(ClassFile::AttributeInfo) +
-                attr->attribute_length_.get();
+                   attr->attribute_length_.get();
         }
     }
 }
 
 
 
-const ClassFile::MethodInfo* MethodTableImpl::load_method(Class* clz,
-                                                          Slice lhs_name,
-                                                          Slice lhs_type)
+const ClassFile::MethodInfo*
+MethodTableImpl::load_method(Class* clz, Slice lhs_name, Slice lhs_type)
 {
     if (methods_) {
         for (int i = 0; i < method_count_; ++i) {
@@ -99,4 +96,4 @@ void MethodTableImpl::bind_native_method(Class* clz,
 
 
 
-}
+} // namespace java

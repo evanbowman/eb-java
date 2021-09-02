@@ -1,6 +1,11 @@
 package test;
 
 
+// In addition to specific test cases, I'm creating a number of arbitrary test
+// cases with increasingly convoluted structure, to add coverage for certain
+// obscure scenarios.
+
+
 class Misc0 {
 
     public Object test = null;
@@ -26,21 +31,25 @@ class Misc0 {
         int test2 = 1;
         int test3 = 6400;
 
-        Test2 t2 = new Test2();
+        Misc0 t2 = new Misc0();
         t2.test = t2;
 
         while (test < 100000) {
-            try {
+            if (test > 5000) {
                 try {
-                    ((Test2)t2.test).foo(0, 1, 0, 2);
+                    try {
+                        ((Misc0)t2.test).foo(0, 1, 0, 2);
+                    } catch (Throwable t) {
+                        return;
+                    }
                 } catch (Throwable t) {
-                    Runtime.getRuntime().exit(0);
+                    Runtime.getRuntime().exit(1);
                 }
-            } catch (Throwable t) {
-                Runtime.getRuntime().exit(1);
             }
 
             test += test3;
         }
+
+        Runtime.getRuntime().exit(1);
     }
 }

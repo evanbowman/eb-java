@@ -47,8 +47,7 @@ void print_stats(void (*print_str_callback)(const char*))
 
     int total = width * height;
     auto begin = total * (float(im) / JVM_HEAP_SIZE);
-    auto middle = total -
-        (begin + total * (float(cm) / JVM_HEAP_SIZE));
+    auto middle = total - (begin + total * (float(cm) / JVM_HEAP_SIZE));
 
     char matrix[width][height];
 
@@ -79,17 +78,13 @@ void print_stats(void (*print_str_callback)(const char*))
 
     char buffer[100];
 
-    snprintf(buffer,
-             sizeof buffer,
-             "objects %zu bytes -->", im);
+    snprintf(buffer, sizeof buffer, "objects %zu bytes -->", im);
 
     print_str_callback(buffer);
 
     const auto prefix_len = strlen(buffer);
 
-    snprintf(buffer,
-             sizeof buffer,
-             "<-- class info %zu bytes\n", cm);
+    snprintf(buffer, sizeof buffer, "<-- class info %zu bytes\n", cm);
 
     const auto suffix_len = strlen(buffer);
 
@@ -152,6 +147,8 @@ void* allocate(size_t size, size_t alignment)
     while (((size_t)alloc_ptr) % alignment not_eq 0) {
         --alloc_ptr;
     }
+
+    std::cout << "cm alloc " << size << std::endl;
 
     if (alloc_ptr < heap::heap_alloc) {
         puts("cm exhausted!");

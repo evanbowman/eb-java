@@ -14,6 +14,47 @@ namespace java {
 
 
 
+SubstitutionField::Size get_field_size(Slice field_type)
+{
+    SubstitutionField::Size field_size = SubstitutionField::b4;
+
+    // Add to byte offset based on size of the typeinfo in the type
+    // descriptor.
+    if (field_type == Slice::from_c_str("I")) {
+        field_size = SubstitutionField::b4;
+    } else if (field_type == Slice::from_c_str("F")) {
+        field_size = SubstitutionField::b4;
+    } else if (field_type == Slice::from_c_str("S")) {
+        field_size = SubstitutionField::b2;
+    } else if (field_type == Slice::from_c_str("C")) {
+        field_size = SubstitutionField::b1;
+    } else if (field_type == Slice::from_c_str("J")) {
+        puts("TODO: implement long fields");
+        while (true)
+            ;
+    } else if (field_type == Slice::from_c_str("D")) {
+        puts("TODO: implement doule fields");
+        while (true)
+            ;
+    } else if (field_type.ptr_[0] == 'L') {
+        // We use a special size enumeration for objects, not
+        // because we cannot figure out how large a pointer is on
+        // the target architecture, but becauese we care whether a
+        // field is an object or a primitive when pushing fields
+        // onto the operand stack.
+        field_size = SubstitutionField::b_ref;
+    } else {
+        std::cout << std::string(field_type.ptr_, field_type.length_)
+                  << std::endl;
+        puts("TODO: field sizes...");
+        while (true)
+            ;
+    }
+    return field_size;
+}
+
+
+
 // A quite complicated function call. It looks up a class, and determines the
 // byte offset of a field within an instance of that class.
 //
@@ -106,9 +147,15 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
                 classfile += sizeof(ClassFile::FieldInfo);
 
                 if (field->access_flags_.get() & 0x08) {
-                    puts("TODO: implement static fields");
-                    while (true)
-                        ;
+                    // Skip field, the static field does not contribute to the
+                    // size of an instance.
+                    for (int i = 0; i < field->attributes_count_.get(); ++i) {
+                        auto attr = (ClassFile::AttributeInfo*)classfile;
+                        classfile += sizeof(ClassFile::AttributeInfo) +
+                                     attr->attribute_length_.get();
+                    }
+
+                    continue;
                 }
 
                 auto field_type = clz->constants_->load_string(
@@ -117,41 +164,7 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
                 auto field_name =
                     clz->constants_->load_string(field->name_index_.get());
 
-                SubstitutionField::Size field_size = SubstitutionField::b4;
-
-                // Add to byte offset based on size of the typeinfo in the type
-                // descriptor.
-                if (field_type == Slice::from_c_str("I")) {
-                    field_size = SubstitutionField::b4;
-                } else if (field_type == Slice::from_c_str("F")) {
-                    field_size = SubstitutionField::b4;
-                } else if (field_type == Slice::from_c_str("S")) {
-                    field_size = SubstitutionField::b2;
-                } else if (field_type == Slice::from_c_str("C")) {
-                    field_size = SubstitutionField::b1;
-                } else if (field_type == Slice::from_c_str("J")) {
-                    puts("TODO: implement long fields");
-                    while (true)
-                        ;
-                } else if (field_type == Slice::from_c_str("D")) {
-                    puts("TODO: implement doule fields");
-                    while (true)
-                        ;
-                } else if (field_type.ptr_[0] == 'L') {
-                    // We use a special size enumeration for objects, not
-                    // because we cannot figure out how large a pointer is on
-                    // the target architecture, but becauese we care whether a
-                    // field is an object or a primitive when pushing fields
-                    // onto the operand stack.
-                    field_size = SubstitutionField::b_ref;
-                } else {
-                    std::cout
-                        << std::string(field_type.ptr_, field_type.length_)
-                        << std::endl;
-                    puts("TODO: field sizes...");
-                    while (true)
-                        ;
-                }
+                auto field_size = get_field_size(field_type);
 
                 if (field_type == local_field_type and
                     field_name == local_field_name) {
@@ -177,7 +190,33 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
         }
     }
 
-    return {};
+    puts("failed to link field");
+    return {SubstitutionField::b_invalid, 0};
+}
+
+
+
+void make_static_variable(Class* clz, const ClassFile::FieldInfo* field)
+{
+    auto field_type =
+        clz->constants_->load_string(field->descriptor_index_.get());
+
+    auto field_name = clz->constants_->load_string(field->name_index_.get());
+
+    auto field_size = get_field_size(field_type);
+    int size;
+    bool is_object = false;
+    if (field_size == SubstitutionField::b_ref) {
+        size = sizeof(Object*);
+        is_object = true;
+    } else {
+        size = 1 << field_size;
+    }
+
+    auto opt = jvm::classmemory::allocate<Class::OptionStaticField>(
+        field_name, (u8)size, is_object);
+
+    clz->append_option(opt);
 }
 
 
@@ -204,6 +243,9 @@ const char* parse_classfile_fields(const char* str,
         }
     }
 
+    // FIXME: This code reserves extra unused slots for static variables,
+    // because the code doesn't know at this point about the fields' access
+    // settings.
     clz->constants_->reserve_fields(nfields);
 
     {
@@ -220,22 +262,24 @@ const char* parse_classfile_fields(const char* str,
 
                 auto field = link_field(clz, ref);
 
-                clz->constants_->bind_field(i + 1, field);
+                if (field.size_ not_eq SubstitutionField::b_invalid) {
+                    clz->constants_->bind_field(i + 1, field);
 
-                if (auto other_clz =
-                        jvm::load_class(clz, ref.class_index_.get())) {
-                    // If we're registering a field for the same class as we're
-                    // parsing...
-                    if (other_clz == clz) {
-                        if (clz->cpool_highest_field_ not_eq -1) {
-                            auto prev =
-                                (SubstitutionField*)clz->constants_->load(
-                                    clz->cpool_highest_field_);
-                            if (field.offset_ > prev->offset_) {
+                    if (auto other_clz =
+                            jvm::load_class(clz, ref.class_index_.get())) {
+                        // If we're registering a field for the same class as we're
+                        // parsing...
+                        if (other_clz == clz) {
+                            if (clz->cpool_highest_field_ not_eq -1) {
+                                auto prev =
+                                    (SubstitutionField*)clz->constants_->load(
+                                        clz->cpool_highest_field_);
+                                if (field.offset_ > prev->offset_) {
+                                    clz->cpool_highest_field_ = i + 1;
+                                }
+                            } else {
                                 clz->cpool_highest_field_ = i + 1;
                             }
-                        } else {
-                            clz->cpool_highest_field_ = i + 1;
                         }
                     }
                 }
@@ -257,6 +301,10 @@ const char* parse_classfile_fields(const char* str,
     for (int i = 0; i < h3->fields_count_.get(); ++i) {
         auto field = (const ClassFile::FieldInfo*)str;
         str += sizeof(ClassFile::FieldInfo);
+
+        if (field->access_flags_.get() & 0x08) {
+            make_static_variable(clz, field);
+        }
 
         for (int i = 0; i < field->attributes_count_.get(); ++i) {
             auto attr = (ClassFile::AttributeInfo*)str;
@@ -347,10 +395,14 @@ Class* parse_classfile(Slice classname, const char* str)
             auto attr_name =
                 clz->constants_->load_string(attr->attribute_name_index_.get());
 
-            if (attr_name == Slice::from_c_str("SourceFile")) {
-                // TODO...
-            } else {
-                // TOOD...
+            if (attr_name == Slice::from_c_str("BootstrapMethods")) {
+                auto opt = jvm::classmemory::allocate<
+                    Class::OptionBootstrapMethodInfo>();
+
+                opt->bootstrap_methods_ =
+                    (const ClassFile::BootstrapMethodsAttribute*)attr;
+
+                clz->append_option(opt);
             }
         }
     }
