@@ -8,6 +8,13 @@ class Static {
     static int bar = 12;
     int baz = 0;
 
+    static Static s = null;
+
+
+    static {
+        s = new Static();
+        s.baz = 1;
+    }
 
 
     static void main(String[] args)
@@ -19,8 +26,7 @@ class Static {
 
         bar = 2;
 
-        Static s = new Static();
-        s.bar += 1;
+        s.bar += s.baz;
 
         if (bar != 3) {
             Runtime.getRuntime().exit(1);
