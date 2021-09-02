@@ -55,7 +55,7 @@ struct Class {
     ConstantPool* constants_ = nullptr;
 
     // methods_ may point to the section of the classfile with the method
-    // implementations, if the has_method_table flags is not set, otherwise,
+    // implementations, if the has_method_table flag is not set, otherwise,
     // methods_ will contain a pointer to a MethodTable objects.
     void* methods_ = nullptr;
 
