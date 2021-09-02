@@ -52,6 +52,10 @@ void ConstantPoolArrayImpl::bind_field(u16 index, SubstitutionField field)
 
 void ConstantPoolCompactImpl::reserve_fields(int count)
 {
+    if (count == 0) {
+        return;
+    }
+
     if (bindings_) {
         puts("error: reserve_fields!");
         while (true)

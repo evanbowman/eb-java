@@ -190,7 +190,7 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
         }
     }
 
-    puts("failed to link field");
+    puts("failed to link field"); // TODO: not a real error for static fields
     return {SubstitutionField::b_invalid, 0};
 }
 
@@ -213,10 +213,12 @@ void make_static_variable(Class* clz, const ClassFile::FieldInfo* field)
         size = 1 << field_size;
     }
 
-    auto opt = jvm::classmemory::allocate<Class::OptionStaticField>(
-        field_name, (u8)size, is_object);
+    auto opt = jvm::classmemory::allocate(sizeof(Class::OptionStaticField) + field_size,
+                                          alignof(Class::OptionStaticField));
 
-    clz->append_option(opt);
+    new (opt) Class::OptionStaticField(field_name, (u8)size, is_object);
+
+    clz->append_option((Class::OptionStaticField*)opt);
 }
 
 

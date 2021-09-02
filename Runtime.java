@@ -2,10 +2,21 @@ package java.lang;
 
 
 
-class Runtime {
+public class Runtime {
 
 
-    public static native Runtime getRuntime();
+    private static Runtime runtime = null;
+
+
+    static {
+        new Runtime();
+    }
+
+
+    public static Runtime getRuntime()
+    {
+        return runtime;
+    }
 
 
     public native void exit(int code);

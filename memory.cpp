@@ -148,8 +148,6 @@ void* allocate(size_t size, size_t alignment)
         --alloc_ptr;
     }
 
-    std::cout << "cm alloc " << size << std::endl;
-
     if (alloc_ptr < heap::heap_alloc) {
         puts("cm exhausted!");
         while (true)

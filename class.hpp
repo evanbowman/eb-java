@@ -134,7 +134,7 @@ struct Class {
 
         u8* data()
         {
-            return ((u8*)this) + sizeof(*this);
+            return ((u8*)this) + sizeof(OptionStaticField);
         }
     };
 

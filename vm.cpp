@@ -398,6 +398,8 @@ struct Bytecode {
         if_le           = 0x9e,
         if_nonnull      = 0xc7,
         if_null         = 0xc6,
+        tableswitch     = 0xaa,
+        lookupswitch    = 0xab,
         fconst_0        = 0x0b,
         fconst_1        = 0x0c,
         fconst_2        = 0x0d,
@@ -494,7 +496,7 @@ void invoke_static_block(Class* clz);
 
 
 
-Class* load_class(Slice classpath, const char* classfile_data)
+Class* import_class(Slice classpath, const char* classfile_data)
 {
     if (auto clz = parse_classfile(classpath, classfile_data)) {
         invoke_static_block(clz);
@@ -515,7 +517,7 @@ Class* import(Slice classpath)
 
     auto data = jar::load_classfile(jar_file_data, classpath);
     if (data.length_) {
-        return load_class(classpath, data.ptr_);
+        return import_class(classpath, data.ptr_);
     }
     return nullptr;
 }
@@ -731,6 +733,7 @@ static Exception* dispatch_method(Class* clz,
                                   bool direct_dispatch,
                                   bool special)
 {
+
     auto ref =
         (const ClassFile::ConstantRef*)clz->constants_->load(method_index);
 
@@ -1702,6 +1705,16 @@ Exception* execute_bytecode(Class* clz,
             }
             pop_operand();
             break;
+
+        case Bytecode::lookupswitch: {
+            puts("TODO: lookupswitch");
+            break;
+        }
+
+        case Bytecode::tableswitch: {
+            puts("TODO: tableswitch");
+            break;
+        }
 
         case Bytecode::fconst_0: {
             static_assert(sizeof(float) == sizeof(s32) and
@@ -2913,10 +2926,6 @@ void invoke_static_block(Class* clz)
 
 
 
-Object* runtime = nullptr;
-
-
-
 void bootstrap()
 {
     // NOTE: I manually edited the bytecode in the Object classfile, which is
@@ -2934,15 +2943,8 @@ void bootstrap()
     }
 
     if (auto runtime_class =
-            load_class(Slice::from_c_str("java/lang/Runtime"),
-                            (const char*)runtime_class_data)) {
-
-        runtime = make_instance_impl(runtime_class);
-
-        jni::bind_native_method(runtime_class,
-                                Slice::from_c_str("getRuntime"),
-                                Slice::from_c_str("TODO_:)"),
-                                [] { push_operand_a(*runtime); });
+            import_class(Slice::from_c_str("java/lang/Runtime"),
+                         (const char*)runtime_class_data)) {
 
 
         jni::bind_native_method(runtime_class,
@@ -2975,8 +2977,8 @@ void bootstrap()
                                 });
     }
 
-    if (load_class(Slice::from_c_str("java/lang/Throwable"),
-                   (const char*)throwable_class_data)) {
+    if (import_class(Slice::from_c_str("java/lang/Throwable"),
+                     (const char*)throwable_class_data)) {
     }
 }
 
