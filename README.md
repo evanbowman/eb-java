@@ -7,3 +7,8 @@ Some of the source code in the project may appear overcomplicated, delicate... a
 By default, the virtual machine uses 256kb of RAM for its heap, and a bit more memory for the operand stack.
 
 I have not finished this project yet, but eb-java does currently implement almost all of the Java instruction set (I'm still working on invokedynamic :)), and I've written a number of unit tests.
+
+Remaining work:
+* Write the garbage collector (I've written GCs before, so I don't actually consider this to be much of a hurdle).
+* Implement more of the standard JRE classes
+* Finish implementing invokedynamic
