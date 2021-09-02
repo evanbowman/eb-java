@@ -67,7 +67,7 @@ ReturnAddress* make_return_address(u32 pc)
 
 
 #ifndef JVM_OPERAND_STACK_SIZE
-#define JVM_OPERAND_STACK_SIZE 1024
+#define JVM_OPERAND_STACK_SIZE 512
 #endif
 
 
@@ -76,23 +76,32 @@ ReturnAddress* make_return_address(u32 pc)
 #endif
 
 
-// TODO: maintain a secondary bitvector, where we can keep track of whether an
-// operand stack element is primitive or instance.
+
+enum class OperandTypeCategory {
+    object,
+    primitive,
+    primitive_wide,
+};
+
+
+
 Buffer<void*, JVM_OPERAND_STACK_SIZE> __operand_stack;
-// For the GC implementation, we'll ultimately need to keep track of which
-// operands are objects.
-Buffer<bool, JVM_OPERAND_STACK_SIZE> __operand_is_object;
+// We need to keep track of operand types, for garbage collection purposes, as
+// well as for the obnoxious dup_x2 etc. instructions that require knowledge of
+// the width of operand stack values.
+Buffer<OperandTypeCategory, JVM_OPERAND_STACK_SIZE> __operand_types;
 
 Buffer<void*, JVM_STACK_LOCALS_SIZE> __locals;
-Buffer<bool, JVM_STACK_LOCALS_SIZE> __local_is_object;
+Buffer<OperandTypeCategory, JVM_STACK_LOCALS_SIZE> __local_types;
 
 
 
-void store_local(int index, void* value, bool is_object)
+void store_local(int index, void* value, OperandTypeCategory tp)
 {
     __locals[(__locals.size() - 1) - index] = value;
-    __local_is_object[(__local_is_object.size() - 1) - index] = is_object;
+    __local_types[(__local_types.size() - 1) - index] = tp;
 }
+
 
 
 void* load_local(int index)
@@ -101,13 +110,18 @@ void* load_local(int index)
 }
 
 
+
 void store_wide_local(int index, void* value)
 {
     s32* words = (s32*)value;
 
-    store_local(index, (void*)(intptr_t)words[0], false);
-    store_local(index + 1, (void*)(intptr_t)words[1], false);
+    store_local(index, (void*)(intptr_t)words[0],
+                OperandTypeCategory::primitive_wide);
+
+    store_local(index + 1, (void*)(intptr_t)words[1],
+                OperandTypeCategory::primitive_wide);
 }
+
 
 
 void load_wide_local(int index, void* result)
@@ -119,34 +133,38 @@ void load_wide_local(int index, void* result)
 }
 
 
+
 void alloc_locals(int count)
 {
     for (int i = 0; i < count; ++i) {
         __locals.push_back(nullptr);
-        __local_is_object.push_back(false);
+        __local_types.push_back(OperandTypeCategory::primitive);
     }
 }
+
 
 
 void free_locals(int count)
 {
     for (int i = 0; i < count; ++i) {
         __locals.pop_back();
-        __local_is_object.pop_back();
+        __local_types.pop_back();
     }
 }
 
 
-void __push_operand_impl(void* value, bool is_object)
+
+void __push_operand_impl(void* value, OperandTypeCategory tp)
 {
     __operand_stack.push_back(value);
-    __operand_is_object.push_back(is_object);
+    __operand_types.push_back(tp);
 }
+
 
 
 void push_operand_p(void* value)
 {
-    __push_operand_impl(value, false);
+    __push_operand_impl(value, OperandTypeCategory::primitive);
 }
 
 
@@ -155,20 +173,25 @@ void push_operand_p(void* value)
 // remember to push objects with push_operand_a.
 void push_operand_a(Object& value)
 {
-    __push_operand_impl(&value, true);
+    __push_operand_impl(&value, OperandTypeCategory::object);
 }
+
 
 
 void push_operand_i(s32 value)
 {
-    __push_operand_impl((void*)(intptr_t)value, false);
+    __push_operand_impl((void*)(intptr_t)value,
+                        OperandTypeCategory::primitive);
 }
+
 
 
 void __push_operand_f_impl(float* value)
 {
-    __push_operand_impl((void*)(intptr_t) * (int*)value, false);
+    __push_operand_impl((void*)(intptr_t) * (int*)value,
+                        OperandTypeCategory::primitive);
 }
+
 
 
 void push_operand_f(float value)
@@ -177,16 +200,26 @@ void push_operand_f(float value)
 }
 
 
+
 void* load_operand(int offset)
 {
     return __operand_stack[(__operand_stack.size() - 1) - offset];
 }
 
 
+
+OperandTypeCategory operand_type_category(int offset)
+{
+    return __operand_types[(__operand_types.size() - 1) - offset];
+}
+
+
+
 float __load_operand_f_impl(void** val)
 {
     return *(float*)val;
 }
+
 
 
 float load_operand_f(int offset)
@@ -196,18 +229,25 @@ float load_operand_f(int offset)
 }
 
 
+
 s32 load_operand_i(int offset)
 {
     return (s32)(intptr_t)load_operand(offset);
 }
 
 
+
 void push_wide_operand(void* value)
 {
     s32* words = (s32*)value;
-    push_operand_i(words[0]);
-    push_operand_i(words[1]);
+
+    __push_operand_impl((void*)(intptr_t)words[0],
+                        OperandTypeCategory::primitive_wide);
+
+    __push_operand_impl((void*)(intptr_t)words[1],
+                        OperandTypeCategory::primitive_wide);
 }
+
 
 
 void push_wide_operand_l(s64 value)
@@ -216,10 +256,12 @@ void push_wide_operand_l(s64 value)
 }
 
 
+
 void push_wide_operand_d(double value)
 {
     push_wide_operand((void*)&value);
 }
+
 
 
 s64 load_wide_operand_l(int offset)
@@ -232,10 +274,12 @@ s64 load_wide_operand_l(int offset)
 }
 
 
+
 double __load_wide_operand_d_impl(void* ptr)
 {
     return *(double*)ptr;
 }
+
 
 
 double load_wide_operand_d(int offset)
@@ -248,14 +292,146 @@ double load_wide_operand_d(int offset)
 }
 
 
+
 void dup(int offset)
 {
     __operand_stack.push_back(
         __operand_stack[(__operand_stack.size() - 1) - offset]);
 
-    __operand_is_object.push_back(
-        __operand_is_object[(__operand_is_object.size() - 1) - offset]);
+    __operand_types.push_back(
+        __operand_types[(__operand_types.size() - 1) - offset]);
 }
+
+
+
+void dup_x1()
+{
+    auto v1 = __operand_stack.back();
+    __operand_stack.insert(__operand_stack.end() - 2, v1);
+
+    auto tp = __operand_types.back();
+    __operand_types.insert(__operand_types.end() - 2, tp);
+}
+
+
+
+void dup_x2()
+{
+    // FIXME: would be more efficient to push a copy and swap
+    auto v1 = __operand_stack.back();
+    __operand_stack.insert(__operand_stack.end() - 3, v1);
+
+    auto tp = __operand_types.back();
+    __operand_types.insert(__operand_types.end() - 3, tp);
+}
+
+
+
+void dup2_x1()
+{
+    // If the stack top is category 2 and the next element is category 1, this
+    // code still works, right? I believe that everything should work just
+    // fine...
+
+    //
+    // ..., value3, value2, value1 ->
+    // ..., value2, value1, value3, value2, value1
+    //
+
+    {
+        auto v1 = *(__operand_stack.end() - 2);
+        __operand_stack.insert(__operand_stack.end() - 3, v1);
+    }
+
+    {
+        auto v1 = *(__operand_stack.end() - 1);
+        __operand_stack.insert(__operand_stack.end() - 3, v1);
+    }
+
+    {
+        auto v1 = *(__operand_types.end() - 2);
+        __operand_types.insert(__operand_types.end() - 3, v1);
+    }
+
+    {
+        auto v1 = *(__operand_types.end() - 1);
+        __operand_types.insert(__operand_types.end() - 3, v1);
+    }
+}
+
+
+
+void dup2_x2()
+{
+    // From the Java instruction set documentation:
+    //
+    //     Form 1:
+    // ..., value4, value3, value2, value1 ->
+    // ..., value2, value1, value4, value3, value2, value1
+    //
+    // where value1, value2, value3, and value4 are all values of a category 1
+    // computational type (§2.11.1).
+    //
+    //
+    // Form 2:
+    // ..., value3, value2, value1 ->
+    // ..., value1, value3, value2, value1
+    //
+    // where value1 is a value of a category 2 computational type and value2 and
+    // value3 are both values of a category 1 computational type (§2.11.1).
+    //
+    //
+    // Form 3:
+    // ..., value3, value2, value1 ->
+    // ..., value2, value1, value3, value2, value1
+    //
+    // where value1 and value2 are both values of a category 1 computational
+    // type and value3 is a value of a category 2 computational type (§2.11.1).
+    //
+    //
+    // Form 4:
+    // ..., value2, value1 ->
+    // ..., value1, value2, value1
+    //
+    // where value1 and value2 are both values of a category 2 computational
+    // type (§2.11.1).
+    //
+
+
+    // The code below was tested, and is confirmed to work, with form 1. Based
+    // on how we implemented things, form 2 should also work with the code
+    // below. Come to think of it, form 3 should work fine too, and so should
+    // form 4. Why does the java instruction set specification describe four
+    // different forms? I suppose it would be relevant for implementations that
+    // don't split long/double datatypes into two operand stack slots. This
+    // implementation of the jvm implements the operand stack as an array of
+    // void*, so all category 1 datatypes will fit in a single stack slot, and
+    // category 2 datatypes can be divided into two stack slots (even though
+    // doing so wastes space in 64bit), and the same code works for 32bit and
+    // 64bit. Admittedly, this code won't run on 16bit systems, but what decade
+    // are we in, the 1970s? All of the interesting microcontrollers with decent
+    // amounts of RAM are 32 bit anyway...
+    {
+        auto v1 = *(__operand_stack.end() - 2);
+        __operand_stack.insert(__operand_stack.end() - 4, v1);
+    }
+
+    {
+        auto v1 = *(__operand_stack.end() - 1);
+        __operand_stack.insert(__operand_stack.end() - 4, v1);
+    }
+
+    {
+        auto v1 = *(__operand_types.end() - 2);
+        __operand_types.insert(__operand_types.end() - 4, v1);
+    }
+
+    {
+        auto v1 = *(__operand_types.end() - 1);
+        __operand_types.insert(__operand_types.end() - 4, v1);
+    }
+}
+
 
 
 void swap()
@@ -263,16 +439,18 @@ void swap()
     std::swap(__operand_stack[__operand_stack.size() - 1],
               __operand_stack[__operand_stack.size() - 2]);
 
-    std::swap(__operand_is_object[__operand_is_object.size() - 1],
-              __operand_is_object[__operand_is_object.size() - 2]);
+    std::swap(__operand_types[__operand_types.size() - 1],
+              __operand_types[__operand_types.size() - 2]);
 }
+
 
 
 void pop_operand()
 {
     __operand_stack.pop_back();
-    __operand_is_object.pop_back();
+    __operand_types.pop_back();
 }
+
 
 
 // clang-format off
@@ -287,11 +465,11 @@ struct Bytecode {
         ldc2_w          = 0x14,
         new_inst        = 0xbb,
         dup             = 0x59,
-        // dup_x1        = 0x5a, // TODO
-        // dup_x2        = 0x5b, // TODO
+        dup_x1          = 0x5a,
+        dup_x2          = 0x5b,
         dup2            = 0x5c,
-        // dup2_x1       = 0x5d, // TODO
-        // dup2_x2       = 0x5e, // TODO
+        dup2_x1         = 0x5d,
+        dup2_x2         = 0x5e,
         bastore         = 0x54,
         baload          = 0x33,
         bipush          = 0x10,
@@ -375,6 +553,10 @@ struct Bytecode {
         land            = 0x7f,
         lor             = 0x81,
         lrem            = 0x71,
+        lshl            = 0x79,
+        lshr            = 0x7b,
+        lushr           = 0x7d,
+        lxor            = 0x83,
         lconst_0        = 0x09,
         lconst_1        = 0x0a,
         lreturn         = 0xad,
@@ -478,6 +660,7 @@ struct Bytecode {
 // clang-format on
 
 
+
 struct ClassTableEntry {
     Slice name_;
     Class* class_;
@@ -560,7 +743,7 @@ void bind_arguments(Object* self,
     int local_param_index = 0;
     int stack_load_index = argc.operand_count_ - 1;
     if (self) {
-        store_local(local_param_index++, self, true);
+        store_local(local_param_index++, self, OperandTypeCategory::object);
         stack_load_index--;
     }
 
@@ -571,7 +754,8 @@ void bind_arguments(Object* self,
             switch (str[i]) {
             default:
                 store_local(
-                    local_param_index, load_operand(stack_load_index--), false);
+                    local_param_index, load_operand(stack_load_index--),
+                    OperandTypeCategory::primitive);
                 ++local_param_index;
                 ++i;
                 break;
@@ -596,7 +780,8 @@ void bind_arguments(Object* self,
 
             case 'L':
                 store_local(
-                    local_param_index, load_operand(stack_load_index--), true);
+                    local_param_index, load_operand(stack_load_index--),
+                    OperandTypeCategory::object);
                 ++local_param_index;
                 while (str[i] not_eq ';') {
                     ++i;
@@ -992,6 +1177,24 @@ void make_invokedynamic_callsite(Class* clz, int bootstrap_method_index)
 
 
 
+static inline s32 arithmetic_right_shift_32(s32 value, s32 amount)
+{
+    s32 s = -((u32)value >> 31);
+    s32 sar = (s ^ value) >> amount ^ s;
+    return sar;
+}
+
+
+
+static inline s64 arithmetic_right_shift_64(s64 value, s64 amount)
+{
+    s64 s = -((u64)value >> 63);
+    s64 sar = (s ^ value) >> amount ^ s;
+    return sar;
+}
+
+
+
 Exception* execute_bytecode(Class* clz,
                             const u8* bytecode,
                             const ClassFile::ExceptionTable* exception_table)
@@ -1228,6 +1431,25 @@ Exception* execute_bytecode(Class* clz,
         case Bytecode::dup:
             dup(0);
             ++pc;
+            break;
+
+        case Bytecode::dup_x1:
+            dup_x1();
+            ++pc;
+            break;
+
+        case Bytecode::dup_x2:
+            dup_x2();
+            ++pc;
+            break;
+
+        case Bytecode::dup2_x1:
+            dup2_x1();
+            ++pc;
+            break;
+
+        case Bytecode::dup2_x2:
+            dup2_x2();
             break;
 
         case Bytecode::dup2:
@@ -1499,7 +1721,9 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::ishr: {
-            const s32 result = load_operand_i(1) >> (load_operand_i(0) & 0x1f);
+            const s32 result =
+                arithmetic_right_shift_32(load_operand_i(1),
+                                          load_operand_i(0) & 0x1f);
             pop_operand();
             pop_operand();
             push_operand_i(result);
@@ -1707,12 +1931,67 @@ Exception* execute_bytecode(Class* clz,
             break;
 
         case Bytecode::lookupswitch: {
-            puts("TODO: lookupswitch");
+            auto key = load_operand_i(0);
+            pop_operand();
+
+            int i = pc + 1;
+
+            if (i % 4 not_eq 0) {
+                // skip padding bytes
+                i += 4 - i % 4;
+            }
+
+            auto default_br = ((network_s32*)(bytecode + i))->get();
+            i += sizeof(network_s32);
+            auto npairs = ((network_s32*)(bytecode + i))->get();
+            i += sizeof(network_s32);
+
+            struct MatchPair {
+                network_s32 case_;
+                network_s32 branch_;
+            };
+
+            auto pairs = (const MatchPair*)(bytecode + i);
+
+            for (int i = 0; i < npairs; ++i) {
+                auto& pair = pairs[i];
+                if (pair.case_.get() == key) {
+                    pc += pair.branch_.get();
+                    goto DONE;
+                }
+            }
+
+            pc += default_br;
+
+            DONE:
             break;
         }
 
         case Bytecode::tableswitch: {
-            puts("TODO: tableswitch");
+            auto index = load_operand_i(0);
+            pop_operand();
+
+            int i = pc + 1;
+
+            if (i % 4 not_eq 0) {
+                // skip padding bytes
+                i += 4 - i % 4;
+            }
+
+            auto default_br = ((network_s32*)(bytecode + i))->get();
+            i += sizeof(network_s32);
+            auto low = ((network_s32*)(bytecode + i))->get();
+            i += sizeof(network_s32);
+            auto high = ((network_s32*)(bytecode + i))->get();
+
+            if (index < low or index > high) {
+                pc += default_br;
+            } else {
+                auto table_offset = index - low;
+                i += sizeof(network_s32);
+                auto jump_table = (network_s32*)(bytecode + i);
+                pc += jump_table[table_offset].get();
+            }
             break;
         }
 
@@ -2242,66 +2521,68 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::astore:
-            store_local(bytecode[pc + 1], load_operand(0), true);
+            store_local(bytecode[pc + 1], load_operand(0),
+                        OperandTypeCategory::object);
             pop_operand();
             pc += 2;
             break;
 
         case Bytecode::astore_0:
-            store_local(0, load_operand(0), true);
+            store_local(0, load_operand(0), OperandTypeCategory::object);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::astore_1:
-            store_local(1, load_operand(0), true);
+            store_local(1, load_operand(0), OperandTypeCategory::object);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::astore_2:
-            store_local(2, load_operand(0), true);
+            store_local(2, load_operand(0), OperandTypeCategory::object);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::astore_3:
-            store_local(3, load_operand(0), true);
+            store_local(3, load_operand(0), OperandTypeCategory::object);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore:
         case Bytecode::istore:
-            store_local(bytecode[pc + 1], load_operand(0), false);
+            store_local(bytecode[pc + 1], load_operand(0),
+                        OperandTypeCategory::primitive);
             pop_operand();
             pc += 2;
             break;
 
         case Bytecode::fstore_0:
         case Bytecode::istore_0:
-            store_local(0, load_operand(0), false);
+            store_local(0, load_operand(0), OperandTypeCategory::primitive);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore_1:
         case Bytecode::istore_1:
-            store_local(1, load_operand(0), false);
+            store_local(1, load_operand(0), OperandTypeCategory::primitive);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore_2:
         case Bytecode::istore_2:
-            store_local(2, load_operand(0), false);
+            store_local(2, load_operand(0), OperandTypeCategory::primitive);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore_3:
         case Bytecode::istore_3:
-            store_local(3, load_operand(0), false);
+            store_local(3, load_operand(0), OperandTypeCategory::primitive);
             pop_operand();
             ++pc;
             break;
@@ -2366,7 +2647,7 @@ Exception* execute_bytecode(Class* clz,
                         (void*)(intptr_t)(
                             (int)(intptr_t)(load_local(bytecode[pc + 1])) +
                             bytecode[pc + 2]),
-                        false);
+                        OperandTypeCategory::primitive);
             pc += 3;
             break;
 
@@ -2770,6 +3051,53 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
             pop_operand();
             push_wide_operand_l(lhs % rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lxor: {
+            auto lhs = load_wide_operand_l(2);
+            auto rhs = load_wide_operand_l(0);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(lhs ^ rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lushr: {
+            auto lhs = load_wide_operand_l(1);
+            auto rhs = load_operand_i(0);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(lhs >> rhs);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lshl: {
+            // FIXME: Potentially non-portable?
+            const auto result =
+                load_wide_operand_l(1) << (load_operand_i(0) & 0x1f);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(result);
+            ++pc;
+            break;
+        }
+
+        case Bytecode::lshr: {
+            const auto result =
+                arithmetic_right_shift_64(load_wide_operand_l(1),
+                                          load_operand_i(0) & 0x1f);
+            pop_operand();
+            pop_operand();
+            pop_operand();
+            push_wide_operand_l(result);
             ++pc;
             break;
         }
