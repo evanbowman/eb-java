@@ -17,6 +17,20 @@ namespace heap {
 
 
 
+u8* begin();
+
+
+
+u8* end();
+
+
+
+// Only inteded to be called by the garbage collector, which, after running,
+// needs to overwrite the new allocation pointer.
+void __overwrite_end(u8* new_end);
+
+
+
 void print_stats(void (*print_str_callback)(const char*));
 
 

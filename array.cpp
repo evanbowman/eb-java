@@ -19,11 +19,9 @@ Array* Array::create(int size, u8 element_size)
         return mem;
     }
 
-    memset(mem, 0, alloc_size);
+    memset((void*)mem, 0, alloc_size);
 
-    new (mem) Array;
-    mem->size_ = size;
-    mem->element_size_ = element_size;
+    new (mem) Array(size, element_size);
     return mem;
 }
 

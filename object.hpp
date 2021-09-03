@@ -10,9 +10,37 @@ namespace java {
 
 struct Object {
 
-    enum Flag { is_class = (1 << 0) };
+    struct Header {
 
-    u32 flags_;
+        Header() : gc_mark_bit_(0)
+        {
+        }
+
+        // Used during GC tracing to identify live objects.
+        u32 gc_mark_bit_ : 1;
+
+        // Unused bits.
+        u32 unused_ : 3;
+
+        // Forwarding pointer, used by the GC when moving objects around in
+        // memory. While running the GC, all object references must be replaced
+        // by Heap::begin() + object->gc_forwarding_offset_. The number bits
+        // reserved for gc_forwarding_offset_ is somewhat arbitrary, although
+        // using fewer bits would limit the amount of addressable memory
+        // supported by the VM. To address all of the default 256 kilobyte heap,
+        // you would only need an 18-bit forwarding offset.
+        u32 gc_forwarding_offset_ : 28;
+    } header_;
+
+
+    Object(Class* clz) :
+        class_(clz)
+    {
+    }
+
+
+    static_assert(sizeof(Header) == 4, "Header does not match expected size");
+
 
     Class* class_;
 

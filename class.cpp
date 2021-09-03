@@ -195,4 +195,11 @@ size_t Class::instance_fields_size()
 
 
 
+size_t Class::instance_size()
+{
+    return sizeof(Object) + instance_fields_size();
+}
+
+
+
 } // namespace java

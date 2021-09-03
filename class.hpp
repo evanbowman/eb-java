@@ -40,9 +40,11 @@ struct Class {
 
 
     enum Flag {
-        is_class = (1 << 0),
+        // clang-format off
+        __reserved_0__   = (1 << 0),
         has_method_table = (1 << 1),
-        has_options = (1 << 2), // reserved for future use
+        __reserved_1__   = (1 << 2),
+        // clang-format on
     };
 
     u16 flags_ = 0;
@@ -114,6 +116,8 @@ struct Class {
     // class->instance_fields_size().
     size_t instance_fields_size();
 
+
+    size_t instance_size();
 
 
     struct OptionBootstrapMethodInfo {

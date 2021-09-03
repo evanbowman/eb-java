@@ -3,9 +3,11 @@
 #include "class.hpp"
 #include "classfile.hpp"
 #include "endian.hpp"
+#include "gc.hpp"
 #include "jar.hpp"
 #include "jni.hpp"
 #include "object.hpp"
+#include "returnAddress.hpp"
 #include <iostream>
 #include <string.h>
 #define INCBIN_PREFIX
@@ -26,28 +28,17 @@ static const char* jar_file_data;
 
 
 
-static Class primitive_array_class;
+Class primitive_array_class;
 
 
 
 // We make the distinction between primitive arrays and reference arrays,
 // because later on, we will need to track gc roots.
-static Class reference_array_class;
+Class reference_array_class;
 
 
 
-static Class return_address_class;
-
-
-
-// Our JVM implementation assumes that all values used with aload are instances
-// of classes. Therefore, the jvm returnAddress datatype must be implemented as
-// an instance of a pseudo-class. Newer compilers don't generate jsr/jsr_w/ret
-// anyway, so this is only relevant when running legacy jars.
-struct ReturnAddress {
-    Object object_;
-    u32 pc_;
-};
+Class return_address_class;
 
 
 
@@ -59,21 +50,10 @@ ReturnAddress* make_return_address(u32 pc)
         while (true)
             ;
     }
-    mem->object_.class_ = &return_address_class;
-    mem->pc_ = pc;
+    new (mem) ReturnAddress(&return_address_class, pc);
 
     return mem;
 }
-
-
-#ifndef JVM_OPERAND_STACK_SIZE
-#define JVM_OPERAND_STACK_SIZE 512
-#endif
-
-
-#ifndef JVM_STACK_LOCALS_SIZE
-#define JVM_STACK_LOCALS_SIZE 1024
-#endif
 
 
 
@@ -989,18 +969,17 @@ Exception* invoke_special(Class* clz, u16 method_index)
 
 Object* make_instance_impl(Class* clz)
 {
-    const auto fields_size = clz->instance_fields_size();
+    const auto instance_size = clz->instance_size();
 
     // printf("instance size %ld\n", fields_size);
 
-    auto mem = (Object*)heap::allocate(sizeof(Object) + fields_size);
+    auto mem = (Object*)heap::allocate(instance_size);
     if (mem == nullptr) {
         puts("oom");
         while (true)
             ;
     }
-    new (mem) Object();
-    mem->class_ = clz;
+    new (mem) Object(clz);
     return mem;
 }
 
@@ -3418,6 +3397,8 @@ int main(int argc, char** argv)
     } else {
         java::jvm::start_from_classfile(str.c_str(), classpath);
     }
+
+    java::jvm::gc::collect();
 
     return 0;
 }

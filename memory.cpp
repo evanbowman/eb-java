@@ -17,6 +17,27 @@ static void* heap_alloc = heap_;
 
 
 
+u8* begin()
+{
+    return heap_;
+}
+
+
+
+u8* end()
+{
+    return (u8*)heap_alloc;
+}
+
+
+
+void __overwrite_end(u8* new_end)
+{
+    heap_alloc = new_end;
+}
+
+
+
 size_t total()
 {
     return JVM_HEAP_SIZE;
@@ -112,6 +133,8 @@ Object* allocate(size_t size)
     while (size % alignof(Object) not_eq 0) {
         ++size;
     }
+
+    puts("heap alloc object");
 
     auto remaining = heap_end - (u8*)heap_alloc;
 

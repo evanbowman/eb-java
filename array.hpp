@@ -16,7 +16,21 @@ struct Array {
     // fields[...]
 
 
+    Array(int size, u8 element_size) :
+        object_(nullptr), // Fill in the class pointer later
+        size_(size),
+        element_size_(element_size)
+    {
+    }
+
+
     static Array* create(int size, u8 element_size);
+
+
+    size_t memory_footprint() const
+    {
+        return sizeof(Array) + size_ * element_size_;
+    }
 
 
     u8* data()
