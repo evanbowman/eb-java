@@ -47,6 +47,16 @@ Object* allocate(size_t size);
 
 
 
+inline size_t aligned_size(size_t size)
+{
+    while (size % alignof(Object) not_eq 0) {
+        ++size;
+    }
+    return size;
+}
+
+
+
 } // namespace heap
 
 

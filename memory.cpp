@@ -131,9 +131,7 @@ void print_stats(void (*print_str_callback)(const char*))
 
 Object* allocate(size_t size)
 {
-    while (size % alignof(Object) not_eq 0) {
-        ++size;
-    }
+    size = aligned_size(size);
 
     auto try_alloc = [&]() -> Object* {
         if (heap_end < heap_alloc) {
@@ -188,14 +186,26 @@ void* allocate(size_t size, size_t alignment)
     }
 
     if (alloc_ptr < heap::heap_alloc) {
-        puts("cm exhausted!");
-        while (true)
-            ;
+        gc::collect();
+    } else {
+        heap::heap_end = alloc_ptr;
+        return alloc_ptr;
     }
 
 
-    heap::heap_end = alloc_ptr;
+    alloc_ptr = (u8*)heap::heap_end - size;
 
+    while (((size_t)alloc_ptr) % alignment not_eq 0) {
+        --alloc_ptr;
+    }
+
+
+    if (alloc_ptr < heap::heap_alloc) {
+        puts("oom!");
+        while (true) ;
+    }
+
+    heap::heap_end = alloc_ptr;
     return alloc_ptr;
 }
 

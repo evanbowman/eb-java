@@ -44,14 +44,11 @@ size_t aligned_instance_size(Object* obj)
     // The allocator aligns objects on the heap to the object alignment
     // boundary, so we must do the same when iterating over them. Objects have
     // their fields appended to the end, tightly packed, so not every instance
-    // will be a multiple of the Object alignment size. e.g. an object with
-    // three char fields will occupy (sizeof(Object) + 3) bytes.
+    // will be a multiple of the Object alignment size. e.g. an object with a
+    // char field, followed by an int field, followed by a char field will
+    // occupy (sizeof(Object) + 6) bytes.
 
-    auto sz = instance_size(obj);
-    while (sz % alignof(Object) not_eq 0) {
-        ++sz;
-    }
-    return sz;
+    return heap::aligned_size(instance_size(obj));
 }
 
 
@@ -134,8 +131,6 @@ static inline void mark_object(Object* object)
         return;
     }
 
-    // std::cout << "mark " << object << std::endl;
-
     object->header_.gc_mark_bit_ = 1;
 
     if (object->class_ == &reference_array_class) {
@@ -210,19 +205,6 @@ void assign_forwarding_pointers()
         current->header_.gc_forwarding_offset_ =
             (((u8*)current) - gap) - (u8*)heap::begin();
 
-        // I've always felt that commented-out print statements in code looks
-        // unprofessional, but it's simply convenient to have these here in case
-        // I need to debug stuff with the GC (hopefully I never need to, but who knows).
-
-        // std::cout << "gap " << gap
-        //           << ", size " << size
-        //           << ", before " << current
-        //           << ", offset " << current->header_.gc_forwarding_offset_
-        //           << ", new address " <<
-        //     (Object*)((u8*)heap::begin() +
-        //               current->header_.gc_forwarding_offset_)
-        //           << std::endl;
-
         if (not current->header_.gc_mark_bit_) {
             gap += size;
         }
@@ -241,10 +223,6 @@ Object* resolve_forwarding_address(Object* object)
     if (not object->header_.gc_mark_bit_) {
         return object;
     }
-    // std::cout << "forward " << object
-    //           << " to "
-    //           << (Object*)(heap::begin() + object->header_.gc_forwarding_offset_)
-    //           << std::endl;
     return (Object*)(heap::begin() + object->header_.gc_forwarding_offset_);
 }
 
@@ -299,8 +277,17 @@ void resolve_forwarding_pointers()
             const auto size = aligned_instance_size(current);
 
             if (current->class_ == &reference_array_class) {
-                puts("todo: gc reference array: resolve fields");
-                while (true) ;
+                auto array = (Array*)current;
+                for (int i = 0; i < array->size_; ++i) {
+                    Object* obj;
+                    memcpy(&obj,
+                           array->data() + i * sizeof(Object*),
+                           sizeof(Object*));
+                    obj = resolve_forwarding_address(obj);
+                    memcpy(array->data() + i * sizeof(Object*),
+                           &obj,
+                           sizeof(Object*));
+                }
             }  else if (current->class_ == &return_address_class or
                         current->class_ == &primitive_array_class) {
                 // Nothing to do
@@ -354,11 +341,6 @@ u32 compact()
         } else {
             current->header_.gc_mark_bit_ = 0;
             compacting_memmove(((u8*)current - gap), (u8*)current, size);
-            // std::cout << "compact: move "
-            //           << current
-            //           << " to "
-            //           << (Object*)((u8*)current - gap)
-            //           << std::endl;
         }
 
         current = heap_next(current, size);
@@ -378,16 +360,16 @@ u32 collect()
     mark();
     assign_forwarding_pointers();
     resolve_forwarding_pointers();
-    auto compacted_bytes = compact();
+    auto freed_bytes = compact();
 
-    heap::__overwrite_end(heap::end() - compacted_bytes);
+    heap::__overwrite_end(heap::end() - freed_bytes);
 
     if ((size_t)heap::end() % alignof(Object) not_eq 0) {
         puts("heap corruption!?");
         while (true);
     }
 
-    return compacted_bytes;
+    return freed_bytes;
 }
 
 
