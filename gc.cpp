@@ -3,6 +3,7 @@
 #include "object.hpp"
 #include "returnAddress.hpp"
 #include "array.hpp"
+#include "vm.hpp"
 
 
 
@@ -62,10 +63,40 @@ Object* heap_next(Object* current, size_t size)
 
 
 
+static inline void mark_object(Object* object)
+{
+    object->header_.gc_mark_bit_ = 1;
+
+    // TODO: mark fields!!!
+    // This is one of the most complicated parts of the whole gc implementation!
+    // We need to go back and look at the classfile to determine which of our
+    // fields are objects. The rest is straightforward compared to the tedium of
+    // fetching info from the classfile again. See link_field(), where compute
+    // the offset of an instance's fields...
+    //
+    // Potential shortcuts:
+    // The constant pool already binds substitution fields to cpool
+    // indices. Maybe we can somehow leverage that info, to save some effort?
+}
+
+
+
 void mark()
 {
+    for (u32 i = 0; i < operand_stack().size(); ++i) {
+        if (operand_types()[i] == OperandTypeCategory::object) {
+            mark_object((Object*)operand_stack()[i]);
+        }
+    }
+
+    for (u32 i = 0; i < locals().size(); ++i) {
+        if (local_types()[i] == OperandTypeCategory::object) {
+            mark_object((Object*)locals()[i]);
+        }
+    }
+
     // TODO:
-    // 1) Mark static vars
+    // 1) Mark static vars (fetch them from the class table)
     // 2) Mark objects on operand stack
     // 3) Mark objects bound to local variables in stack frames
     // ... that's everything, right? ...

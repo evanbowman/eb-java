@@ -2,6 +2,7 @@
 
 #include "class.hpp"
 #include "slice.hpp"
+#include "buffer.hpp"
 
 
 
@@ -18,6 +19,30 @@ namespace jvm {
 #ifndef JVM_STACK_LOCALS_SIZE
 #define JVM_STACK_LOCALS_SIZE 1024
 #endif
+
+
+enum class OperandTypeCategory {
+    object,
+    primitive,
+    primitive_wide,
+};
+
+
+
+using OperandStack = Buffer<void*, JVM_OPERAND_STACK_SIZE>;
+using OperandTypes = Buffer<OperandTypeCategory, JVM_OPERAND_STACK_SIZE>;
+
+
+OperandStack& operand_stack();
+OperandTypes& operand_types();
+
+
+using Locals = Buffer<void*, JVM_STACK_LOCALS_SIZE>;
+using LocalTypes = Buffer<OperandTypeCategory, JVM_STACK_LOCALS_SIZE>;
+
+
+Locals& locals();
+LocalTypes& local_types();
 
 
 

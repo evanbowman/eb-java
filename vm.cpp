@@ -1,5 +1,4 @@
 #include "array.hpp"
-#include "buffer.hpp"
 #include "class.hpp"
 #include "classfile.hpp"
 #include "endian.hpp"
@@ -57,22 +56,44 @@ ReturnAddress* make_return_address(u32 pc)
 
 
 
-enum class OperandTypeCategory {
-    object,
-    primitive,
-    primitive_wide,
-};
-
-
-
-Buffer<void*, JVM_OPERAND_STACK_SIZE> __operand_stack;
+OperandStack __operand_stack;
 // We need to keep track of operand types, for garbage collection purposes, as
 // well as for the obnoxious dup_x2 etc. instructions that require knowledge of
 // the width of operand stack values.
-Buffer<OperandTypeCategory, JVM_OPERAND_STACK_SIZE> __operand_types;
+OperandTypes __operand_types;
 
-Buffer<void*, JVM_STACK_LOCALS_SIZE> __locals;
-Buffer<OperandTypeCategory, JVM_STACK_LOCALS_SIZE> __local_types;
+
+
+OperandStack& operand_stack()
+{
+    return __operand_stack;
+}
+
+
+
+OperandTypes& operand_types()
+{
+    return __operand_types;
+}
+
+
+
+Locals __locals;
+LocalTypes __local_types;
+
+
+
+Locals& locals()
+{
+    return __locals;
+}
+
+
+
+LocalTypes& local_types()
+{
+    return __local_types;
+}
 
 
 
