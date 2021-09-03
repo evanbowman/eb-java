@@ -24,6 +24,12 @@ public:
     }
 
 
+    struct FieldBinding {
+        u16 index_;
+        SubstitutionField field_;
+    };
+
+
     virtual const char* parse(const ClassFile::HeaderSection1& src) = 0;
 
 
@@ -34,6 +40,12 @@ public:
 
 
     virtual void bind_field(u16 index, SubstitutionField field) = 0;
+
+
+    virtual std::pair<const FieldBinding*, u16> bindings()
+    {
+        while (true) ;
+    }
 
 
     Slice load_string(u16 index)
@@ -101,7 +113,7 @@ public:
 
         for (int i = 0; i < binding_count_; ++i) {
             if (bindings_[i].index_ == index and
-                bindings_[i].field_.size_ not_eq SubstitutionField::b_invalid) {
+                bindings_[i].field_.valid_) {
                 return (const ClassFile::ConstantHeader*)&bindings_[i].field_;
             }
         }
@@ -145,25 +157,24 @@ public:
     }
 
 
-    struct FieldBinding {
-        u16 index_;
-        SubstitutionField field_;
-    };
-
-
     void reserve_fields(int count) override;
 
 
     void bind_field(u16 index, SubstitutionField field) override
     {
         for (int i = 0;; ++i) {
-            if (bindings_[i].field_.size_ ==
-                SubstitutionField::Size::b_invalid) {
+            if (not bindings_[i].field_.valid_) {
                 bindings_[i].index_ = index - 1;
                 bindings_[i].field_ = field;
                 return;
             }
         }
+    }
+
+
+    std::pair<const FieldBinding*, u16> bindings() override
+    {
+        return {bindings_, binding_count_};
     }
 
 

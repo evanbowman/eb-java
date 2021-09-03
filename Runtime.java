@@ -9,7 +9,7 @@ public class Runtime {
 
 
     static {
-        new Runtime();
+        runtime = new Runtime();
     }
 
 

@@ -39,6 +39,12 @@ struct Object {
     }
 
 
+    u8* data()
+    {
+        return (u8*)this + sizeof(*this);
+    }
+
+
     static_assert(sizeof(Header) == 4, "Header does not match expected size");
 
 

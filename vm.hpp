@@ -21,6 +21,23 @@ namespace jvm {
 #endif
 
 
+
+struct ClassTableEntry {
+    Slice name_;
+    Class* class_;
+};
+
+
+
+// FIXME: use a more flexible data structure for the class table.
+using ClassTable = Buffer<ClassTableEntry, 100>;
+
+
+
+ClassTable& class_table();
+
+
+
 enum class OperandTypeCategory {
     object,
     primitive,

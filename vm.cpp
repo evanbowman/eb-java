@@ -662,17 +662,17 @@ struct Bytecode {
 
 
 
-struct ClassTableEntry {
-    Slice name_;
-    Class* class_;
-};
-
-
-
 // FIXME: use a different datastructure for the class table (perhaps an
 // intrusive binary tree?). We have no idea how many classes will be in the
 // system.
-static Buffer<ClassTableEntry, 100> class_table;
+static ClassTable __class_table;
+
+
+
+ClassTable& class_table()
+{
+    return __class_table;
+}
 
 
 
@@ -710,7 +710,7 @@ Class* import(Slice classpath)
 
 void register_class(Slice name, Class* clz)
 {
-    class_table.push_back({name, clz});
+    __class_table.push_back({name, clz});
 }
 
 
@@ -859,6 +859,7 @@ Exception* invoke_method(Class* clz,
         }
     }
 
+    puts("invoke failed");
     return TODO_throw_proper_exception();
 }
 
@@ -866,7 +867,7 @@ Exception* invoke_method(Class* clz,
 
 Class* load_class_by_name(Slice class_name)
 {
-    for (auto& entry : class_table) {
+    for (auto& entry : __class_table) {
         if (entry.name_ == class_name) {
             return entry.class_;
         }
@@ -906,6 +907,7 @@ lookup_method(Class* clz, Slice lhs_name, Slice lhs_type)
     }
 
     if (clz->super_ == nullptr) {
+        puts("method lookup failed");
         return {nullptr, clz};
     } else {
         return lookup_method(clz->super_, lhs_name, lhs_type);
@@ -946,7 +948,9 @@ static Exception* dispatch_method(Class* clz,
                  ++i) {
                 pop_operand();
             }
-
+            std::cout << std::string(lhs_name.ptr_,
+                                     lhs_name.length_) << std::endl;
+            puts("self null");
             return TODO_throw_proper_exception();
         }
     }
@@ -975,6 +979,7 @@ static Exception* dispatch_method(Class* clz,
         }
         return invoke_method(mtd.second, self, mtd.first, argc, lhs_type);
     } else {
+        puts("missing method");
         return TODO_throw_proper_exception();
     }
 }
@@ -3285,9 +3290,7 @@ void bootstrap()
                                 Slice::from_c_str("gc"),
                                 Slice::from_c_str("TODO_:)"),
                                 [] {
-                                    puts("TODO: gc");
-                                    while (true)
-                                        ;
+                                    java::jvm::gc::collect();
                                 });
 
         jni::bind_native_method(
@@ -3418,8 +3421,6 @@ int main(int argc, char** argv)
     } else {
         java::jvm::start_from_classfile(str.c_str(), classpath);
     }
-
-    java::jvm::gc::collect();
 
     return 0;
 }

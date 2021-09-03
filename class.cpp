@@ -87,15 +87,7 @@ void* Class::get_field(Object* obj, u16 index, bool& is_object)
 
     u8* obj_ram = ((u8*)obj) + sizeof(Object);
 
-    // printf("(get field) index %d from %p\n", index, obj_ram);
-    if (sub->size_ == SubstitutionField::b_ref) {
-        is_object = true;
-        Object* val;
-        memcpy(&val, obj_ram + sub->offset_, sizeof(Object*));
-        return val;
-    } else {
-        is_object = false;
-    }
+    is_object = sub->object_;
 
     switch (1 << sub->size_) {
     case 1:
@@ -114,10 +106,9 @@ void* Class::get_field(Object* obj, u16 index, bool& is_object)
     }
 
     case 8:
-        puts("TODO: implement eight byte fields!");
-        while (true)
-            ;
-        break;
+        u64 val;
+        memcpy(&val, obj_ram + sub->offset_, 8);
+        return (void*)(intptr_t)val;
     }
 
     puts("invalid field configuration");
@@ -137,10 +128,6 @@ void Class::put_field(Object* obj, u16 index, void* value)
 
     u8* obj_ram = ((u8*)obj) + sizeof(Object);
 
-    if (sub->size_ == SubstitutionField::b_ref) {
-        memcpy(obj_ram + sub->offset_, &value, sizeof(Object*));
-        return;
-    }
 
     switch (1 << sub->size_) {
     case 1:
@@ -159,11 +146,11 @@ void Class::put_field(Object* obj, u16 index, void* value)
         break;
     }
 
-    case 8:
-        puts("TODO: implement eight byte fields!");
-        while (true)
-            ;
+    case 8: {
+        u64 val = (u64)(intptr_t)value;
+        memcpy(obj_ram + sub->offset_, &val, sizeof val);
         break;
+    }
     }
 
     // printf("put field %d %d %d %p \n", sub->offset_,

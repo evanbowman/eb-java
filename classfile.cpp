@@ -14,9 +14,11 @@ namespace java {
 
 
 
-SubstitutionField::Size get_field_size(Slice field_type)
+std::pair<SubstitutionField::Size, bool> get_field_size(Slice field_type)
 {
     SubstitutionField::Size field_size = SubstitutionField::b4;
+
+    bool is_object = false;
 
     // Add to byte offset based on size of the typeinfo in the type
     // descriptor.
@@ -33,7 +35,7 @@ SubstitutionField::Size get_field_size(Slice field_type)
         while (true)
             ;
     } else if (field_type == Slice::from_c_str("D")) {
-        puts("TODO: implement doule fields");
+        puts("TODO: implement double fields");
         while (true)
             ;
     } else if (field_type.ptr_[0] == 'L') {
@@ -42,7 +44,14 @@ SubstitutionField::Size get_field_size(Slice field_type)
         // the target architecture, but becauese we care whether a
         // field is an object or a primitive when pushing fields
         // onto the operand stack.
-        field_size = SubstitutionField::b_ref;
+        if (sizeof(void*) == 4) {
+            field_size = SubstitutionField::b4;
+        } else {
+            field_size = SubstitutionField::b8;
+        }
+
+        is_object = true;
+
     } else {
         std::cout << std::string(field_type.ptr_, field_type.length_)
                   << std::endl;
@@ -50,7 +59,7 @@ SubstitutionField::Size get_field_size(Slice field_type)
         while (true)
             ;
     }
-    return field_size;
+    return {field_size, is_object};
 }
 
 
@@ -83,6 +92,11 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
     // determine the byte offset of the field within an instance of said class,
     // we begin by loading the class itself.
     if (auto clz = jvm::load_class(current, ref.class_index_.get())) {
+
+        // Storing a flag to indicate whether a fieldref in the constant pool
+        // belongs to the class defined in the classfile helps us later when
+        // we're running the gc.
+        const bool is_local = clz == current;
 
         // To make things even more complicated, we need to run this thing in a
         // loop, to match inherited fields.
@@ -166,18 +180,19 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
 
                 auto field_size = get_field_size(field_type);
 
+                SubstitutionField sub(field_size.first,
+                                      instance_offset,
+                                      field_size.second);
+
                 if (field_type == local_field_type and
                     field_name == local_field_name) {
+
+                    sub.local_ = is_local;
                     // std::cout << "found field at offset " << instance_offset << std::endl;
-                    return {field_size, instance_offset};
+                    return sub;
                 }
 
-                if (field_size == SubstitutionField::b_ref) {
-                    instance_offset += sizeof(Object*);
-                } else {
-                    instance_offset += (1 << field_size);
-                }
-
+                instance_offset += sub.real_size();
 
                 // Skip over attributes...
                 for (int i = 0; i < field->attributes_count_.get(); ++i) {
@@ -191,7 +206,7 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
     }
 
     puts("failed to link field"); // TODO: not a real error for static fields
-    return {SubstitutionField::b_invalid, 0};
+    return {};
 }
 
 
@@ -204,16 +219,10 @@ void make_static_variable(Class* clz, const ClassFile::FieldInfo* field)
     auto field_name = clz->constants_->load_string(field->name_index_.get());
 
     auto field_size = get_field_size(field_type);
-    int size;
-    bool is_object = false;
-    if (field_size == SubstitutionField::b_ref) {
-        size = sizeof(Object*);
-        is_object = true;
-    } else {
-        size = 1 << field_size;
-    }
+    int size = 1 << field_size.first;
+    bool is_object = field_size.second;
 
-    auto opt = jvm::classmemory::allocate(sizeof(Class::OptionStaticField) + field_size,
+    auto opt = jvm::classmemory::allocate(sizeof(Class::OptionStaticField) + size,
                                           alignof(Class::OptionStaticField));
 
     new (opt) Class::OptionStaticField(field_name, (u8)size, is_object);
@@ -264,7 +273,13 @@ const char* parse_classfile_fields(const char* str,
 
                 auto field = link_field(clz, ref);
 
-                if (field.size_ not_eq SubstitutionField::b_invalid) {
+                if (field.valid_) {
+
+                    if (field.offset_ > 2047) {
+                        puts("TODO: error, offset too large to fit in sub");
+                        while (true) ;
+                    }
+
                     clz->constants_->bind_field(i + 1, field);
 
                     if (auto other_clz =

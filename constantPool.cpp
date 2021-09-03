@@ -65,10 +65,10 @@ void ConstantPoolCompactImpl::reserve_fields(int count)
     bindings_ = (FieldBinding*)jvm::classmemory::allocate(
         sizeof(FieldBinding) * count, alignof(FieldBinding));
 
-    memset(bindings_, 0, sizeof(FieldBinding) * count);
+    memset((void*)bindings_, 0, sizeof(FieldBinding) * count);
 
     for (int i = 0; i < count; ++i) {
-        bindings_[i].field_.size_ = SubstitutionField::Size::b_invalid;
+        bindings_[i].field_.valid_ = 0;
     }
 
     if (bindings_ == nullptr) {

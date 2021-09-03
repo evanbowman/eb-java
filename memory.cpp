@@ -1,5 +1,6 @@
 #include "memory.hpp"
 #include <stdlib.h>
+#include "gc.hpp"
 
 
 
@@ -134,17 +135,32 @@ Object* allocate(size_t size)
         ++size;
     }
 
-    puts("heap alloc object");
+    auto try_alloc = [&]() -> Object* {
+        if (heap_end < heap_alloc) {
+            // This should never happen, right?
+            while (true) ;
+        }
 
-    auto remaining = heap_end - (u8*)heap_alloc;
+        auto remaining = (u8*)heap_end - (u8*)heap_alloc;
 
-    if (remaining) {
-        auto result = (Object*)heap_alloc;
-        heap_alloc = ((u8*)heap_alloc) + size;
-        return result;
+        if ((size_t)remaining >= size) {
+            auto result = (Object*)heap_alloc;
+            heap_alloc = ((u8*)heap_alloc) + size;
+            return result;
+        }
+
+        return nullptr;
+    };
+
+    Object* mem = try_alloc();
+
+    if (mem == nullptr) {
+        gc::collect();
+    } else {
+        return mem;
     }
 
-    return nullptr;
+    return try_alloc();
 }
 
 

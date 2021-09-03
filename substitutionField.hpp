@@ -1,6 +1,7 @@
 #pragma once
 
 #include "int.h"
+#include "endian.hpp"
 
 
 namespace java {
@@ -18,25 +19,45 @@ struct SubstitutionField {
         b2 = 1, // two bytes
         b4 = 2, // four bytes
         b8 = 3, // eight bytes
-        b_invalid = 4,
-        b_static = 5, // reserved! We will need to use a completely different
-                      // data structure for static vars. We care less about
-                      // compactness and speed, in those cases.
-        b_ref = 6, // The field is a reference. We care about this property when
-                   // pushing fields onto the operand stack, at which point, we
-                   // care whether or not the field is a class instance.
     };
+
+    Size size_ : 2;
+    u16 local_ : 1;
+    u16 object_ : 1;
+    u16 valid_ : 1;
+
+    // Byte offset of the field in the instance of an object. We support object
+    // sizes of max 2047 bytes. You can create arrays larger than this, I don't
+    // really think most users would need more than 2047 bytes of member fields
+    // in a single object.
+    u16 offset_ : 11;
+
+
+    SubstitutionField() :
+        valid_(0)
+    {
+
+    }
+
+
+    SubstitutionField(Size size, u16 offset, bool is_object) :
+        size_(size),
+        local_(false),
+        object_(is_object),
+        valid_(1),
+        offset_(offset)
+    {
+    }
+
 
     u32 real_size() const
     {
-        return (size_ == b_ref) ? sizeof(void*) : (1 << size_);
+        return 1 << size_;
     }
 
-    Size size_ : 3;
-    u16 offset_ : 13; // Ok, so we lose three bits of precision, which
-                      // technically isn't compliant with the java standard. But
-                      // who puts 65535 fields in a class anyway?
 };
+static_assert(sizeof(SubstitutionField) == 2 and
+              alignof(SubstitutionField) == 2, "");
 
 
 

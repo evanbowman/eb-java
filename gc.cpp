@@ -39,18 +39,29 @@ size_t instance_size(Object* obj)
 
 
 
-Object* heap_next(Object* current, size_t size)
+size_t aligned_instance_size(Object* obj)
 {
-    auto ptr = (u8*)current;
-
     // The allocator aligns objects on the heap to the object alignment
     // boundary, so we must do the same when iterating over them. Objects have
     // their fields appended to the end, tightly packed, so not every instance
     // will be a multiple of the Object alignment size. e.g. an object with
     // three char fields will occupy (sizeof(Object) + 3) bytes.
-    while (size % alignof(Object) not_eq 0) {
-        ++size;
+
+    auto sz = instance_size(obj);
+    while (sz % alignof(Object) not_eq 0) {
+        ++sz;
     }
+    return sz;
+}
+
+
+
+Object* heap_next(Object* current, size_t size)
+{
+    // NOTE: heap_next is also called during heap compaction, after an object
+    // has been relocated, so it is never safe to dereference `current`.
+
+    auto ptr = (u8*)current;
 
     ptr += size;
 
@@ -63,11 +74,67 @@ Object* heap_next(Object* current, size_t size)
 
 
 
+// NOTE: Unsafe to call on pseudo-objects, like Array or ReturnAddress.
+void visit_object_fields(Object* object, void (*callback)(Object**))
+{
+    if (object == nullptr) {
+        return;
+    }
+
+    // We are repurposing the SubstitutionField design to determine the
+    // layout of our own fields, and which of those fields are objects. For
+    // efficiency, the implementation inserts descriptors, called
+    // SubstitutionFields, into the constant pool, which describe the size
+    // and the offset of a field within an instance of a class. This speeds
+    // up field lookup significantly, but we can also use the same
+    // architecture to determine which fields in a class are objects, by
+    // asking the constant pool for previously bound substitution fields,
+    // and inspecting each field that's declared as local to the class
+    // definition (local, as opposed to non-local fields, which are
+    // referenced by a classfile, but which do not belong to the class
+    // itself).
+
+    auto current_clz = object->class_;
+
+    while (current_clz) {
+        auto bindings = current_clz->constants_->bindings();
+
+        for (int i = 0; i < bindings.second; ++i) {
+            auto binding = bindings.first[i];
+
+            if (binding.field_.valid_ and
+                binding.field_.local_ and
+                binding.field_.object_) {
+
+                Object* field;
+                memcpy(&field,
+                       object->data() + binding.field_.offset_,
+                       sizeof field);
+
+                callback(&field);
+
+                memcpy(object->data() + binding.field_.offset_,
+                       &field,
+                       sizeof field);
+            }
+        }
+        current_clz = current_clz->super_;
+    }
+}
+
+
+
 static inline void mark_object(Object* object)
 {
     if (object == nullptr) {
         return;
     }
+
+    if (object->header_.gc_mark_bit_) {
+        return;
+    }
+
+    // std::cout << "mark " << object << std::endl;
 
     object->header_.gc_mark_bit_ = 1;
 
@@ -84,28 +151,11 @@ static inline void mark_object(Object* object)
                object->class_ == &primitive_array_class) {
         // Nothing to do
     } else {
-        // TODO: mark fields!!!
 
-    // This is one of the most complicated parts of the whole gc implementation!
-    // We need to go back and look at the classfile to determine which of our
-    // fields are objects. The rest is straightforward compared to the tedium of
-    // fetching info from the classfile again. See link_field(), where compute
-    // the offset of an instance's fields...
-    //
-    // Potential shortcuts:
-    // The constant pool already binds substitution fields to cpool
-    // indices. Maybe we can somehow leverage that info, to save some effort?
-    //
-    // We're also dealing with inherited fields from superclasses, so we'll need
-    // to walk the chain all the way back up? But a Substitution field already
-    // tells us whether it contains an object...
-    //
-    // For each field in classfile:
-    //   Lookup field ref in classfile:
-    //     Go to same index in cpool, where substitution field is bound
-    //       If it's an object field, fetch and mark from offset in object
-    // repeat for all superclasses
-    //
+        visit_object_fields(object, [](Object** obj) {
+            mark_object(*obj);
+        });
+
     }
 }
 
@@ -125,40 +175,165 @@ void mark()
         }
     }
 
-    // TODO:
-    // 1) Mark static vars (fetch them from the class table)
-    // 2) Mark objects on operand stack
-    // 3) Mark objects bound to local variables in stack frames
-    // ... that's everything, right? ...
+    for (auto& info : class_table()) {
+        auto opts = info.class_->options_;
+
+        while (opts) {
+            if (opts->type_ == Class::Option::Type::static_field) {
+                auto field = (Class::OptionStaticField*)opts;
+                if (field->is_object_) {
+                    Object* static_obj;
+                    memcpy(&static_obj,
+                           field->data(),
+                           sizeof static_obj);
+                    mark_object(static_obj);
+                }
+            }
+
+            opts = opts->next_;
+        }
+    }
 }
 
 
 
 void assign_forwarding_pointers()
 {
-    // TODO:
-    // Iterate over each object on the heap, as if we were going to run the
-    // compaction. Assign each object's forwarding pointer to its future
-    // address. Then, in a subsequent interation, we can fix all object pointers
-    // by replacing each object reference with its contained forwarding address.
+    auto current = (Object*)heap::begin();
+
+    size_t gap = 0;
+
+    while (current) {
+
+        const auto size = aligned_instance_size(current);
+
+        current->header_.gc_forwarding_offset_ =
+            (((u8*)current) - gap) - (u8*)heap::begin();
+
+        // I've always felt that commented-out print statements in code looks
+        // unprofessional, but it's simply convenient to have these here in case
+        // I need to debug stuff with the GC (hopefully I never need to, but who knows).
+
+        // std::cout << "gap " << gap
+        //           << ", size " << size
+        //           << ", before " << current
+        //           << ", offset " << current->header_.gc_forwarding_offset_
+        //           << ", new address " <<
+        //     (Object*)((u8*)heap::begin() +
+        //               current->header_.gc_forwarding_offset_)
+        //           << std::endl;
+
+        if (not current->header_.gc_mark_bit_) {
+            gap += size;
+        }
+
+        current = heap_next(current, size);
+    }
 }
 
 
 
-void debug_visit_heap()
+Object* resolve_forwarding_address(Object* object)
 {
-    auto current = (Object*)heap::begin();
+    if (object == nullptr) {
+        return nullptr;
+    }
+    if (not object->header_.gc_mark_bit_) {
+        return object;
+    }
+    // std::cout << "forward " << object
+    //           << " to "
+    //           << (Object*)(heap::begin() + object->header_.gc_forwarding_offset_)
+    //           << std::endl;
+    return (Object*)(heap::begin() + object->header_.gc_forwarding_offset_);
+}
 
-    while (current) {
 
-        const auto size = instance_size(current);
 
-        std::cout << "visit object on the heap, mark: "
-                  << current->header_.gc_mark_bit_
-                  << ", size: "
-                  << size
-                  << std::endl;
-        current = heap_next(current, size);
+void resolve_forwarding_pointers()
+{
+    // First, fix pointers to objects in local variables, static variables, and
+    // operand stack slots.
+
+    // Resolve addresses in operand stack
+    for (u32 i = 0; i < operand_stack().size(); ++i) {
+        if (operand_types()[i] == OperandTypeCategory::object) {
+            operand_stack()[i] = resolve_forwarding_address((Object*)operand_stack()[i]);
+        }
+    }
+
+    // Resolve addresses in local variables
+    for (u32 i = 0; i < locals().size(); ++i) {
+        if (local_types()[i] == OperandTypeCategory::object) {
+            locals()[i] = resolve_forwarding_address((Object*)locals()[i]);
+        }
+    }
+
+    // Resolve addresses in static variables
+    for (auto& info : class_table()) {
+        auto opts = info.class_->options_;
+
+        while (opts) {
+            if (opts->type_ == Class::Option::Type::static_field) {
+                auto field = (Class::OptionStaticField*)opts;
+                if (field->is_object_) {
+                    Object* static_obj;
+                    memcpy(&static_obj,
+                           field->data(),
+                           sizeof static_obj);
+                    static_obj = resolve_forwarding_address(static_obj);
+                    memcpy(field->data(),
+                           &static_obj,
+                           sizeof static_obj);
+                }
+            }
+
+            opts = opts->next_;
+        }
+    }
+
+    // Now, scan the heap, and fix internal pointers to other objects...
+    {
+        auto current = (Object*)heap::begin();
+        while (current) {
+            const auto size = aligned_instance_size(current);
+
+            if (current->class_ == &reference_array_class) {
+                puts("todo: gc reference array: resolve fields");
+                while (true) ;
+            }  else if (current->class_ == &return_address_class or
+                        current->class_ == &primitive_array_class) {
+                // Nothing to do
+            } else {
+                visit_object_fields(current, [](Object** field) {
+                    *field = resolve_forwarding_address(*field);
+                });
+            }
+
+            current = heap_next(current, size);
+        }
+    }
+}
+
+
+
+// Only safe to call when src >= dest. Intended for moving memory from a higher
+// address to a lower address, during heap compaction.
+void compacting_memmove(u8* dest, u8* src, size_t amount)
+{
+    const bool is_overlapping = dest + amount >= src;
+
+    if (is_overlapping) {
+        if (dest == src) {
+            // Nothing to do.
+            return;
+        } else {
+            while (amount--) {
+                *(dest++) = *(src++);
+            }
+        }
+    } else {
+        memcpy(dest, src, amount);
     }
 }
 
@@ -166,7 +341,30 @@ void debug_visit_heap()
 
 u32 compact()
 {
-    return 0;
+    auto current = (Object*)heap::begin();
+
+    size_t gap = 0;
+
+    while (current) {
+
+        const auto size = aligned_instance_size(current);
+
+        if (not current->header_.gc_mark_bit_) {
+            gap += size;
+        } else {
+            current->header_.gc_mark_bit_ = 0;
+            compacting_memmove(((u8*)current - gap), (u8*)current, size);
+            // std::cout << "compact: move "
+            //           << current
+            //           << " to "
+            //           << (Object*)((u8*)current - gap)
+            //           << std::endl;
+        }
+
+        current = heap_next(current, size);
+    }
+
+    return gap;
 }
 
 
@@ -179,8 +377,17 @@ u32 collect()
 
     mark();
     assign_forwarding_pointers();
-    debug_visit_heap();
-    return compact();
+    resolve_forwarding_pointers();
+    auto compacted_bytes = compact();
+
+    heap::__overwrite_end(heap::end() - compacted_bytes);
+
+    if ((size_t)heap::end() % alignof(Object) not_eq 0) {
+        puts("heap corruption!?");
+        while (true);
+    }
+
+    return compacted_bytes;
 }
 
 
