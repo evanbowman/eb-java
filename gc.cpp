@@ -65,9 +65,27 @@ Object* heap_next(Object* current, size_t size)
 
 static inline void mark_object(Object* object)
 {
+    if (object == nullptr) {
+        return;
+    }
+
     object->header_.gc_mark_bit_ = 1;
 
-    // TODO: mark fields!!!
+    if (object->class_ == &reference_array_class) {
+        auto array = (Array*)object;
+        for (int i = 0; i < array->size_; ++i) {
+            Object* obj;
+            memcpy(&obj,
+                   array->data() + i * sizeof(Object*),
+                   sizeof(Object*));
+            mark_object(obj);
+        }
+    } else if (object->class_ == &return_address_class or
+               object->class_ == &primitive_array_class) {
+        // Nothing to do
+    } else {
+        // TODO: mark fields!!!
+
     // This is one of the most complicated parts of the whole gc implementation!
     // We need to go back and look at the classfile to determine which of our
     // fields are objects. The rest is straightforward compared to the tedium of
@@ -77,6 +95,18 @@ static inline void mark_object(Object* object)
     // Potential shortcuts:
     // The constant pool already binds substitution fields to cpool
     // indices. Maybe we can somehow leverage that info, to save some effort?
+    //
+    // We're also dealing with inherited fields from superclasses, so we'll need
+    // to walk the chain all the way back up? But a Substitution field already
+    // tells us whether it contains an object...
+    //
+    // For each field in classfile:
+    //   Lookup field ref in classfile:
+    //     Go to same index in cpool, where substitution field is bound
+    //       If it's an object field, fetch and mark from offset in object
+    // repeat for all superclasses
+    //
+    }
 }
 
 
