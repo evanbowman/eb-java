@@ -1,8 +1,8 @@
 #pragma once
 
+#include "buffer.hpp"
 #include "class.hpp"
 #include "slice.hpp"
-#include "buffer.hpp"
 
 
 
@@ -73,10 +73,6 @@ void register_class(Slice name, Class* clz);
 
 
 Class* load_class(Class* current_module, u16 class_index);
-
-
-
-
 
 
 

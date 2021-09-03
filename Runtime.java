@@ -30,4 +30,21 @@ public class Runtime {
 
     public native long freeMemory();
 
+
+    public void halt(int code)
+    {
+        exit(code);
+    }
+
+
+    int availableProcessors()
+    {
+        return 1;
+    }
+
+
+    public long maxMemory()
+    {
+        return totalMemory();
+    }
 }

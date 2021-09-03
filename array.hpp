@@ -16,10 +16,9 @@ struct Array {
     // fields[...]
 
 
-    Array(int size, u8 element_size) :
-        object_(nullptr), // Fill in the class pointer later
-        size_(size),
-        element_size_(element_size)
+    Array(int size, u8 element_size)
+        : object_(nullptr), // Fill in the class pointer later
+          size_(size), element_size_(element_size)
     {
     }
 

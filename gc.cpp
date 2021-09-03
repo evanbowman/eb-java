@@ -1,8 +1,8 @@
 #include "gc.hpp"
+#include "array.hpp"
 #include "memory.hpp"
 #include "object.hpp"
 #include "returnAddress.hpp"
-#include "array.hpp"
 #include "vm.hpp"
 
 
@@ -99,8 +99,7 @@ void visit_object_fields(Object* object, void (*callback)(Object**))
         for (int i = 0; i < bindings.second; ++i) {
             auto binding = bindings.first[i];
 
-            if (binding.field_.valid_ and
-                binding.field_.local_ and
+            if (binding.field_.valid_ and binding.field_.local_ and
                 binding.field_.object_) {
 
                 Object* field;
@@ -137,9 +136,7 @@ static inline void mark_object(Object* object)
         auto array = (Array*)object;
         for (int i = 0; i < array->size_; ++i) {
             Object* obj;
-            memcpy(&obj,
-                   array->data() + i * sizeof(Object*),
-                   sizeof(Object*));
+            memcpy(&obj, array->data() + i * sizeof(Object*), sizeof(Object*));
             mark_object(obj);
         }
     } else if (object->class_ == &return_address_class or
@@ -147,10 +144,7 @@ static inline void mark_object(Object* object)
         // Nothing to do
     } else {
 
-        visit_object_fields(object, [](Object** obj) {
-            mark_object(*obj);
-        });
-
+        visit_object_fields(object, [](Object** obj) { mark_object(*obj); });
     }
 }
 
@@ -178,9 +172,7 @@ void mark()
                 auto field = (Class::OptionStaticField*)opts;
                 if (field->is_object_) {
                     Object* static_obj;
-                    memcpy(&static_obj,
-                           field->data(),
-                           sizeof static_obj);
+                    memcpy(&static_obj, field->data(), sizeof static_obj);
                     mark_object(static_obj);
                 }
             }
@@ -236,7 +228,8 @@ void resolve_forwarding_pointers()
     // Resolve addresses in operand stack
     for (u32 i = 0; i < operand_stack().size(); ++i) {
         if (operand_types()[i] == OperandTypeCategory::object) {
-            operand_stack()[i] = resolve_forwarding_address((Object*)operand_stack()[i]);
+            operand_stack()[i] =
+                resolve_forwarding_address((Object*)operand_stack()[i]);
         }
     }
 
@@ -256,13 +249,9 @@ void resolve_forwarding_pointers()
                 auto field = (Class::OptionStaticField*)opts;
                 if (field->is_object_) {
                     Object* static_obj;
-                    memcpy(&static_obj,
-                           field->data(),
-                           sizeof static_obj);
+                    memcpy(&static_obj, field->data(), sizeof static_obj);
                     static_obj = resolve_forwarding_address(static_obj);
-                    memcpy(field->data(),
-                           &static_obj,
-                           sizeof static_obj);
+                    memcpy(field->data(), &static_obj, sizeof static_obj);
                 }
             }
 
@@ -288,8 +277,8 @@ void resolve_forwarding_pointers()
                            &obj,
                            sizeof(Object*));
                 }
-            }  else if (current->class_ == &return_address_class or
-                        current->class_ == &primitive_array_class) {
+            } else if (current->class_ == &return_address_class or
+                       current->class_ == &primitive_array_class) {
                 // Nothing to do
             } else {
                 visit_object_fields(current, [](Object** field) {
@@ -366,7 +355,8 @@ u32 collect()
 
     if ((size_t)heap::end() % alignof(Object) not_eq 0) {
         puts("heap corruption!?");
-        while (true);
+        while (true)
+            ;
     }
 
     return freed_bytes;
@@ -374,6 +364,6 @@ u32 collect()
 
 
 
-}
-}
-}
+} // namespace gc
+} // namespace jvm
+} // namespace java

@@ -14,8 +14,7 @@ namespace jvm {
 // anyway, so this is only relevant when running legacy jars.
 struct ReturnAddress {
 
-    ReturnAddress(Class* clz, u32 pc) :
-        object_(clz), pc_(pc)
+    ReturnAddress(Class* clz, u32 pc) : object_(clz), pc_(pc)
     {
     }
 
@@ -26,5 +25,5 @@ struct ReturnAddress {
 
 
 
-}
-}
+} // namespace jvm
+} // namespace java

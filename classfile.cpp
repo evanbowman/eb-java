@@ -31,23 +31,23 @@ std::pair<SubstitutionField::Size, bool> get_field_size(Slice field_type)
     } else if (field_type == Slice::from_c_str("C")) {
         field_size = SubstitutionField::b1;
     } else if (field_type == Slice::from_c_str("J")) {
-        puts("TODO: implement long fields");
-        while (true)
-            ;
+        field_size = SubstitutionField::b8;
     } else if (field_type == Slice::from_c_str("D")) {
-        puts("TODO: implement double fields");
-        while (true)
-            ;
+        field_size = SubstitutionField::b8;
     } else if (field_type.ptr_[0] == 'L') {
         // We use a special size enumeration for objects, not
         // because we cannot figure out how large a pointer is on
         // the target architecture, but becauese we care whether a
         // field is an object or a primitive when pushing fields
         // onto the operand stack.
-        if (sizeof(void*) == 4) {
+        if (sizeof(Object*) == 4) {
             field_size = SubstitutionField::b4;
-        } else {
+        } else if (sizeof(Object*) == 8) {
             field_size = SubstitutionField::b8;
+        } else {
+            puts("unsupported architecture");
+            while (true)
+                ;
         }
 
         is_object = true;
@@ -180,9 +180,8 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
 
                 auto field_size = get_field_size(field_type);
 
-                SubstitutionField sub(field_size.first,
-                                      instance_offset,
-                                      field_size.second);
+                SubstitutionField sub(
+                    field_size.first, instance_offset, field_size.second);
 
                 if (field_type == local_field_type and
                     field_name == local_field_name) {
@@ -222,8 +221,9 @@ void make_static_variable(Class* clz, const ClassFile::FieldInfo* field)
     int size = 1 << field_size.first;
     bool is_object = field_size.second;
 
-    auto opt = jvm::classmemory::allocate(sizeof(Class::OptionStaticField) + size,
-                                          alignof(Class::OptionStaticField));
+    auto opt =
+        jvm::classmemory::allocate(sizeof(Class::OptionStaticField) + size,
+                                   alignof(Class::OptionStaticField));
 
     new (opt) Class::OptionStaticField(field_name, (u8)size, is_object);
 
@@ -277,7 +277,8 @@ const char* parse_classfile_fields(const char* str,
 
                     if (field.offset_ > 2047) {
                         puts("TODO: error, offset too large to fit in sub");
-                        while (true) ;
+                        while (true)
+                            ;
                     }
 
                     clz->constants_->bind_field(i + 1, field);

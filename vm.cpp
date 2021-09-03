@@ -116,10 +116,11 @@ void store_wide_local(int index, void* value)
 {
     s32* words = (s32*)value;
 
-    store_local(index, (void*)(intptr_t)words[0],
-                OperandTypeCategory::primitive_wide);
+    store_local(
+        index, (void*)(intptr_t)words[0], OperandTypeCategory::primitive_wide);
 
-    store_local(index + 1, (void*)(intptr_t)words[1],
+    store_local(index + 1,
+                (void*)(intptr_t)words[1],
                 OperandTypeCategory::primitive_wide);
 }
 
@@ -181,8 +182,7 @@ void push_operand_a(Object& value)
 
 void push_operand_i(s32 value)
 {
-    __push_operand_impl((void*)(intptr_t)value,
-                        OperandTypeCategory::primitive);
+    __push_operand_impl((void*)(intptr_t)value, OperandTypeCategory::primitive);
 }
 
 
@@ -754,9 +754,9 @@ void bind_arguments(Object* self,
         while (true) {
             switch (str[i]) {
             default:
-                store_local(
-                    local_param_index, load_operand(stack_load_index--),
-                    OperandTypeCategory::primitive);
+                store_local(local_param_index,
+                            load_operand(stack_load_index--),
+                            OperandTypeCategory::primitive);
                 ++local_param_index;
                 ++i;
                 break;
@@ -780,9 +780,9 @@ void bind_arguments(Object* self,
             }
 
             case 'L':
-                store_local(
-                    local_param_index, load_operand(stack_load_index--),
-                    OperandTypeCategory::object);
+                store_local(local_param_index,
+                            load_operand(stack_load_index--),
+                            OperandTypeCategory::object);
                 ++local_param_index;
                 while (str[i] not_eq ';') {
                     ++i;
@@ -948,8 +948,8 @@ static Exception* dispatch_method(Class* clz,
                  ++i) {
                 pop_operand();
             }
-            std::cout << std::string(lhs_name.ptr_,
-                                     lhs_name.length_) << std::endl;
+            std::cout << std::string(lhs_name.ptr_, lhs_name.length_)
+                      << std::endl;
             puts("self null");
             return TODO_throw_proper_exception();
         }
@@ -1514,33 +1514,106 @@ Exception* execute_bytecode(Class* clz,
                 return TODO_throw_proper_exception();
             }
 
-            bool is_object;
-            auto field = arg->get_field(
-                ((network_u16*)&bytecode[pc + 1])->get(), is_object);
+            auto c = arg->class_->constants_->load(
+                ((network_u16*)&bytecode[pc + 1])->get());
 
-            if (is_object) {
-                push_operand_a(*(Object*)field);
+            auto sub = (SubstitutionField*)c;
+
+            u8* obj_ram = arg->data();
+
+            if (sub->object_) {
+                Object* val;
+                memcpy(&val, obj_ram + sub->offset_, sizeof val);
+                push_operand_a(*val);
             } else {
-                push_operand_p(field);
-            }
+                switch (1 << sub->size_) {
+                case 1:
+                    push_operand_i(obj_ram[sub->offset_]);
+                    break;
 
+                case 2: {
+                    s16 val;
+                    memcpy(&val, obj_ram + sub->offset_, 2);
+                    push_operand_i(val);
+                    break;
+                }
+
+                case 4: {
+                    s32 val;
+                    memcpy(&val, obj_ram + sub->offset_, 4);
+                    push_operand_i(val);
+                    break;
+                }
+
+                case 8: {
+                    s64 val;
+                    memcpy(&val, obj_ram + sub->offset_, 8);
+                    push_wide_operand_l(val);
+                }
+                }
+            }
             pc += 3;
             break;
         }
 
         case Bytecode::putfield: {
-            auto obj = (Object*)load_operand(1);
-            auto val = load_operand(0);
+            if (operand_type_category(0) ==
+                OperandTypeCategory::primitive_wide) {
 
-            pop_operand();
-            pop_operand();
+                // TODO...
+                puts("TODO: put field with category 2 operand");
+                while (true)
+                    ;
 
-            if (obj == nullptr) {
-                // TODO: NullPointerException
-                return TODO_throw_proper_exception();
+            } else {
+                auto obj = (Object*)load_operand(1);
+                auto value = load_operand(0);
+
+                pop_operand();
+                pop_operand();
+
+                if (obj == nullptr) {
+                    // TODO: NullPointerException
+                    return TODO_throw_proper_exception();
+                }
+
+                auto c = obj->class_->constants_->load(
+                    ((network_u16*)&bytecode[pc + 1])->get());
+
+                auto sub = (SubstitutionField*)c;
+
+                u8* obj_ram = obj->data();
+
+                if (sub->object_) {
+                    auto obj_value = (Object*)value;
+                    memcpy(obj_ram + sub->offset_, &obj_value, sizeof value);
+                } else {
+                    switch (1 << sub->size_) {
+                    case 1:
+                        obj_ram[sub->offset_] = (u8)(intptr_t)value;
+                        break;
+
+                    case 2: {
+                        s16 val = (s16)(intptr_t)value;
+                        memcpy(obj_ram + sub->offset_, &val, sizeof val);
+                        break;
+                    }
+
+                    case 4: {
+                        s32 val = (s32)(intptr_t)value;
+                        memcpy(obj_ram + sub->offset_, &val, sizeof val);
+                        break;
+                    }
+
+                    case 8: {
+                        puts("theoretically unreachable, why are we here!?");
+                        while (true)
+                            ;
+                        break;
+                    }
+                    }
+                }
             }
-
-            obj->put_field(((network_u16*)&bytecode[pc + 1])->get(), val);
             pc += 3;
             break;
         }
@@ -1726,9 +1799,8 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::ishr: {
-            const s32 result =
-                arithmetic_right_shift_32(load_operand_i(1),
-                                          load_operand_i(0) & 0x1f);
+            const s32 result = arithmetic_right_shift_32(
+                load_operand_i(1), load_operand_i(0) & 0x1f);
             pop_operand();
             pop_operand();
             push_operand_i(result);
@@ -1968,7 +2040,7 @@ Exception* execute_bytecode(Class* clz,
 
             pc += default_br;
 
-            DONE:
+        DONE:
             break;
         }
 
@@ -2526,8 +2598,8 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::astore:
-            store_local(bytecode[pc + 1], load_operand(0),
-                        OperandTypeCategory::object);
+            store_local(
+                bytecode[pc + 1], load_operand(0), OperandTypeCategory::object);
             pop_operand();
             pc += 2;
             break;
@@ -2558,7 +2630,8 @@ Exception* execute_bytecode(Class* clz,
 
         case Bytecode::fstore:
         case Bytecode::istore:
-            store_local(bytecode[pc + 1], load_operand(0),
+            store_local(bytecode[pc + 1],
+                        load_operand(0),
                         OperandTypeCategory::primitive);
             pop_operand();
             pc += 2;
@@ -3085,8 +3158,8 @@ Exception* execute_bytecode(Class* clz,
 
         case Bytecode::lshl: {
             // FIXME: Potentially non-portable?
-            const auto result =
-                load_wide_operand_l(1) << (load_operand_i(0) & 0x1f);
+            const auto result = load_wide_operand_l(1)
+                                << (load_operand_i(0) & 0x1f);
             pop_operand();
             pop_operand();
             pop_operand();
@@ -3096,9 +3169,8 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::lshr: {
-            const auto result =
-                arithmetic_right_shift_64(load_wide_operand_l(1),
-                                          load_operand_i(0) & 0x1f);
+            const auto result = arithmetic_right_shift_64(
+                load_wide_operand_l(1), load_operand_i(0) & 0x1f);
             pop_operand();
             pop_operand();
             pop_operand();
@@ -3252,7 +3324,8 @@ void invoke_static_block(Class* clz)
         if (exn) {
             // TODO: what to do! I'm not really sure where we should propagate
             // an exception from a static block...
-            while (true) ;
+            while (true)
+                ;
         }
     }
 }
@@ -3289,9 +3362,7 @@ void bootstrap()
         jni::bind_native_method(runtime_class,
                                 Slice::from_c_str("gc"),
                                 Slice::from_c_str("TODO_:)"),
-                                [] {
-                                    java::jvm::gc::collect();
-                                });
+                                [] { java::jvm::gc::collect(); });
 
         jni::bind_native_method(
             runtime_class,

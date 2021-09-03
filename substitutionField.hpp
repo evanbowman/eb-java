@@ -1,7 +1,7 @@
 #pragma once
 
-#include "int.h"
 #include "endian.hpp"
+#include "int.h"
 
 
 namespace java {
@@ -33,19 +33,14 @@ struct SubstitutionField {
     u16 offset_ : 11;
 
 
-    SubstitutionField() :
-        valid_(0)
+    SubstitutionField() : valid_(0)
     {
-
     }
 
 
-    SubstitutionField(Size size, u16 offset, bool is_object) :
-        size_(size),
-        local_(false),
-        object_(is_object),
-        valid_(1),
-        offset_(offset)
+    SubstitutionField(Size size, u16 offset, bool is_object)
+        : size_(size), local_(false), object_(is_object), valid_(1),
+          offset_(offset)
     {
     }
 
@@ -54,10 +49,10 @@ struct SubstitutionField {
     {
         return 1 << size_;
     }
-
 };
 static_assert(sizeof(SubstitutionField) == 2 and
-              alignof(SubstitutionField) == 2, "");
+                  alignof(SubstitutionField) == 2,
+              "");
 
 
 

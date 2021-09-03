@@ -15,5 +15,5 @@ u32 collect();
 
 
 }
-}
-}
+} // namespace jvm
+} // namespace java

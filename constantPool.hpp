@@ -44,7 +44,8 @@ public:
 
     virtual std::pair<const FieldBinding*, u16> bindings()
     {
-        while (true) ;
+        while (true)
+            ;
     }
 
 
@@ -112,8 +113,7 @@ public:
         index -= 1;
 
         for (int i = 0; i < binding_count_; ++i) {
-            if (bindings_[i].index_ == index and
-                bindings_[i].field_.valid_) {
+            if (bindings_[i].index_ == index and bindings_[i].field_.valid_) {
                 return (const ClassFile::ConstantHeader*)&bindings_[i].field_;
             }
         }

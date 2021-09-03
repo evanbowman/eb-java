@@ -105,12 +105,6 @@ struct Class {
                                              Slice type_signature);
 
 
-    void put_field(Object* obj, u16 const_pool_index, void* value);
-
-
-    void* get_field(Object* obj, u16 const_pool_index, bool& is_object);
-
-
     // The extra memory required to hold all fields of an instance of this
     // class. A size of an instance of this class equals sizeof(Object) +
     // class->instance_fields_size().

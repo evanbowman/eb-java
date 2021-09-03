@@ -1,6 +1,6 @@
 #include "memory.hpp"
-#include <stdlib.h>
 #include "gc.hpp"
+#include <stdlib.h>
 
 
 
@@ -136,7 +136,8 @@ Object* allocate(size_t size)
     auto try_alloc = [&]() -> Object* {
         if (heap_end < heap_alloc) {
             // This should never happen, right?
-            while (true) ;
+            while (true)
+                ;
         }
 
         auto remaining = (u8*)heap_end - (u8*)heap_alloc;
@@ -202,7 +203,8 @@ void* allocate(size_t size, size_t alignment)
 
     if (alloc_ptr < heap::heap_alloc) {
         puts("oom!");
-        while (true) ;
+        while (true)
+            ;
     }
 
     heap::heap_end = alloc_ptr;
