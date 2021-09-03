@@ -1560,10 +1560,33 @@ Exception* execute_bytecode(Class* clz,
             if (operand_type_category(0) ==
                 OperandTypeCategory::primitive_wide) {
 
-                // TODO...
-                puts("TODO: put field with category 2 operand");
-                while (true)
-                    ;
+                // NOTE: I haven't tested this code for writing long/double,
+                // hopefully it actually works. TODO: unit tests...
+
+                auto obj = (Object*)load_operand(2);
+                auto value = load_wide_operand_l(0);
+
+                pop_operand();
+                pop_operand();
+                pop_operand();
+
+                if (obj == nullptr) {
+                    // TODO: NullPointerException
+                    return TODO_throw_proper_exception();
+                }
+
+                auto c = obj->class_->constants_->load(
+                    ((network_u16*)&bytecode[pc + 1])->get());
+
+                auto sub = (SubstitutionField*)c;
+
+                u8* obj_ram = obj->data();
+
+                if (sub->size_ not_eq SubstitutionField::Size::b8) {
+                    return TODO_throw_proper_exception();
+                }
+
+                memcpy(obj_ram + sub->offset_, &value, sizeof(value));
 
             } else {
                 auto obj = (Object*)load_operand(1);
@@ -1606,9 +1629,10 @@ Exception* execute_bytecode(Class* clz,
                     }
 
                     case 8: {
-                        puts("theoretically unreachable, why are we here!?");
-                        while (true)
-                            ;
+                        // Not sure how we could ever get here. long/double
+                        // handled above, as well as the 64 bit case where
+                        // pointers are eight bytes.
+                        return TODO_throw_proper_exception();
                         break;
                     }
                     }
