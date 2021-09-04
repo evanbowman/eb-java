@@ -17,7 +17,6 @@ Remaining work:
 * Implement more of the standard JRE classes
 * Implement the bloated /java/lang/String class
 * Finish implementing invokedynamic
-* Support long/double as class fields. A strange limitation, I know, I just haven't gotten around to it yet.
 * More unit tests
 * Realistically, there are problably a couple of bugs, which will hopefully be uncovered by extensive unit testing
 
