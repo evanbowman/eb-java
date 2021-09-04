@@ -14,7 +14,7 @@ for i in *.java; do
     echo Running test $i...
     echo ================================================================================
 
-    ../java Test.jar test/"${i%%.*}"
+    ../eb-java Test.jar test/"${i%%.*}"
 
     exit_status=$?
 

@@ -1514,7 +1514,7 @@ Exception* execute_bytecode(Class* clz,
                 return TODO_throw_proper_exception();
             }
 
-            auto c = arg->class_->constants_->load(
+            auto c = clz->constants_->load(
                 ((network_u16*)&bytecode[pc + 1])->get());
 
             auto sub = (SubstitutionField*)c;
@@ -1575,7 +1575,7 @@ Exception* execute_bytecode(Class* clz,
                     return TODO_throw_proper_exception();
                 }
 
-                auto c = obj->class_->constants_->load(
+                auto c = clz->constants_->load(
                     ((network_u16*)&bytecode[pc + 1])->get());
 
                 auto sub = (SubstitutionField*)c;
@@ -1600,7 +1600,7 @@ Exception* execute_bytecode(Class* clz,
                     return TODO_throw_proper_exception();
                 }
 
-                auto c = obj->class_->constants_->load(
+                auto c = clz->constants_->load(
                     ((network_u16*)&bytecode[pc + 1])->get());
 
                 auto sub = (SubstitutionField*)c;
@@ -3331,9 +3331,9 @@ Exception* execute_bytecode(Class* clz,
 
 
 
-INCBIN(object_class, "Object.class");
-INCBIN(runtime_class, "Runtime.class");
-INCBIN(throwable_class, "Throwable.class");
+INCBIN(object_class, "java/lang/Object.class");
+INCBIN(runtime_class, "java/lang/Runtime.class");
+INCBIN(throwable_class, "java/lang/Throwable.class");
 
 
 
