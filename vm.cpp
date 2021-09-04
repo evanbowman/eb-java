@@ -859,7 +859,6 @@ Exception* invoke_method(Class* clz,
         }
     }
 
-    puts("invoke failed");
     return TODO_throw_proper_exception();
 }
 
@@ -948,9 +947,6 @@ static Exception* dispatch_method(Class* clz,
                  ++i) {
                 pop_operand();
             }
-            std::cout << std::string(lhs_name.ptr_, lhs_name.length_)
-                      << std::endl;
-            puts("self null");
             return TODO_throw_proper_exception();
         }
     }
@@ -3398,6 +3394,7 @@ void bootstrap()
                                 Slice::from_c_str("freeMemory"),
                                 Slice::from_c_str("TODO_:)"),
                                 [] {
+                                    heap::print_stats([](const char* str) { printf("%s", str); });
                                     push_wide_operand_l(jvm::heap::total() -
                                                         jvm::heap::used());
                                 });
@@ -3512,9 +3509,9 @@ int main(int argc, char** argv)
     const auto classpath = java::Slice::from_c_str(argv[2]);
 
     if (fname.substr(fname.find_last_of(".") + 1) == "jar") {
-        java::jvm::start_from_jar(str.c_str(), classpath);
+        return java::jvm::start_from_jar(str.c_str(), classpath);
     } else {
-        java::jvm::start_from_classfile(str.c_str(), classpath);
+        return java::jvm::start_from_classfile(str.c_str(), classpath);
     }
 
     return 0;
