@@ -387,7 +387,9 @@ Class* parse_classfile(Slice classname, const char* str)
     jvm::register_class(classname, clz);
 
 
-    clz->super_ = jvm::load_class(clz, h2->super_class_.get());
+    if (not(classname == Slice::from_c_str("java/lang/Object"))) {
+        clz->super_ = jvm::load_class(clz, h2->super_class_.get());
+    }
 
 
     str = parse_classfile_fields(str, clz, *h1);
