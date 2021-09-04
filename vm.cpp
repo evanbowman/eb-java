@@ -694,7 +694,9 @@ Class* import_class(Slice classpath, const char* classfile_data)
 Class* import(Slice classpath)
 {
     if (jar_file_data == nullptr) {
-        puts("missing jar, import failed");
+        std::cout << "missing jar, import failed for "
+                  << std::string(classpath.ptr_, classpath.length_)
+                  << std::endl;
         while (true)
             ;
     }
@@ -883,7 +885,7 @@ Class* load_class_by_name(Slice class_name)
 
 
 
-Class* load_class(Class* current_module, u16 class_index)
+Slice classname(Class* current_module, u16 class_index)
 {
     auto c_clz =
         (const ClassFile::ConstantClass*)current_module->constants_->load(
@@ -892,8 +894,14 @@ Class* load_class(Class* current_module, u16 class_index)
     auto cname =
         current_module->constants_->load_string(c_clz->name_index_.get());
 
+    return cname;
+}
 
-    return load_class_by_name(cname);
+
+
+Class* load_class(Class* current_module, u16 class_index)
+{
+    return load_class_by_name(classname(current_module, class_index));
 }
 
 
@@ -1007,6 +1015,41 @@ Object* make_instance_impl(Class* clz)
 
 
 
+Object* clone(Object* self)
+{
+    if (self->class_ == &reference_array_class or
+        self->class_ == &primitive_array_class) {
+
+        auto src = (Array*)self;
+
+        puts("clone array!");
+
+        auto dst = Array::create(src->size_, src->element_size_);
+        if (dst == nullptr) {
+            puts("TODO: throw oom error");
+            while (true) ;
+        }
+
+        memcpy(dst, src, src->memory_footprint());
+
+        return (Object*)dst;
+
+    } else if (self->class_ == &return_address_class) {
+        // TODO: can user code ever clone a ReturnAddress? Should be impossible.
+        return nullptr;
+    } else {
+        auto inst = make_instance_impl(self->class_);
+        auto size = self->class_->instance_size();
+
+        memcpy(inst, self, size);
+
+        return inst;
+    }
+    return nullptr;
+}
+
+
+
 Object* make_instance(Class* current_module, u16 class_constant)
 {
     auto clz = load_class(current_module, class_constant);
@@ -1089,6 +1132,44 @@ void ldc2(Class* clz, u16 index)
             ;
         break;
     }
+}
+
+
+
+bool primitive_array_type_compare(Array* array, Slice typedescriptor)
+{
+    if (typedescriptor.length_ == 2) {
+        if (typedescriptor.ptr_[0] not_eq '[') {
+            return false;
+        }
+        switch (typedescriptor.ptr_[1]) {
+        case 'I': return array->primitive_type_ == Array::Type::t_int;
+        case 'F': return array->primitive_type_ == Array::Type::t_float;
+        case 'S': return array->primitive_type_ == Array::Type::t_short;
+        case 'C': return array->primitive_type_ == Array::Type::t_char;
+        case 'J': return array->primitive_type_ == Array::Type::t_long;
+        case 'D': return array->primitive_type_ == Array::Type::t_double;
+        case 'B': return array->primitive_type_ == Array::Type::t_byte;
+        case 'Z': return array->primitive_type_ == Array::Type::t_boolean;
+        }
+    }
+    // TODO: what about other types, like byte?
+    return false;
+}
+
+
+
+bool reference_array_type_compare(Array* array, Slice typedescriptor)
+{
+    // FIXME! We need to find a way to store metadata in an array about which
+    // class of objects that it contains. Perhaps a class table index? But that
+    // won't work when we move away from a fixed-size class table. We cannot
+    // simply create new classes on the heap for every array of objects that we
+    // create, but we do need to be able to perform checked casts. Maybe we need
+    // to store an additional class pointer in array objects... I can't think of
+    // a better idea.
+
+    return true;
 }
 
 
@@ -1275,28 +1356,29 @@ Exception* execute_bytecode(Class* clz,
 
             int element_size = 4;
             switch (bytecode[pc + 1]) {
-            case 4:
-            case 5:
-            case 8:
+            case Array::Type::t_boolean:
+            case Array::Type::t_char:
+            case Array::Type::t_byte:
                 element_size = 1;
                 break;
 
-            case 6:
-            case 10:
+            case Array::Type::t_float:
+            case Array::Type::t_int:
                 element_size = 4;
                 break;
 
-            case 9:
+            case Array::Type::t_short:
                 element_size = 2;
                 break;
 
-            case 7:
-            case 11:
+            case Array::Type::t_double:
+            case Array::Type::t_long:
                 element_size = 8;
                 break;
             }
 
             auto array = Array::create(element_count, element_size);
+            array->primitive_type_ = (Array::Type)bytecode[pc + 1];
 
             array->object_.class_ = &primitive_array_class;
             push_operand_a(*(Object*)array);
@@ -1394,21 +1476,40 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::checkcast: {
-            auto other =
-                load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
             auto obj = (Object*)load_operand(0);
             pop_operand();
 
-            auto current = obj->class_;
-            while (current) {
-                // FIXME: check for successful cast to implemented interfaces
-                if (current == other) {
+            auto cname =
+                classname(clz, ((network_u16*)&bytecode[pc + 1])->get());
+
+            if (obj->class_ == &primitive_array_class) {
+                if (primitive_array_type_compare((Array*)obj, cname)) {
                     goto CAST_SUCCESS;
+                } else {
+                    goto CAST_FAILURE;
                 }
-                current = current->super_;
+            } else if (obj->class_ == &reference_array_class) {
+                if (reference_array_type_compare((Array*)obj, cname)) {
+                    goto CAST_SUCCESS;
+                } else {
+                    goto CAST_FAILURE;
+                }
             }
 
+            {
+                auto other = load_class_by_name(cname);
+
+                auto current = obj->class_;
+                while (current) {
+                    // FIXME: check for successful cast to implemented interfaces
+                    if (current == other) {
+                        goto CAST_SUCCESS;
+                    }
+                    current = current->super_;
+                }
+            }
             // TODO: throw class cast exception!
+        CAST_FAILURE:
             puts("bad cast");
             while (true)
                 ;
@@ -1420,12 +1521,23 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode:: instanceof: {
-            auto other =
-                load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
             auto obj = (Object*)load_operand(0);
             pop_operand();
+
+            auto cname =
+                classname(clz, ((network_u16*)&bytecode[pc + 1])->get());
+
+            if (obj->class_ == &primitive_array_class) {
+                push_operand_i(primitive_array_type_compare((Array*)obj, cname));
+            } else if (obj->class_ == &reference_array_class) {
+                push_operand_i(reference_array_type_compare((Array*)obj, cname));
+            } else {
+                auto other = load_class_by_name(cname);
+                push_operand_i(instanceof (obj, other));
+            }
+
             pc += 3;
-            push_operand_i(instanceof (obj, other));
+
             break;
         }
 
@@ -1936,7 +2048,7 @@ Exception* execute_bytecode(Class* clz,
             break;
 
         case Bytecode::if_icmpge:
-            if (load_operand_i(0) < load_operand_i(1)) {
+            if (load_operand_i(0) <= load_operand_i(1)) {
                 pc += ((network_s16*)(bytecode + pc + 1))->get();
             } else {
                 pc += 3;
@@ -3363,6 +3475,14 @@ void bootstrap()
         primitive_array_class.super_ = obj_class;
         reference_array_class.super_ = obj_class;
         return_address_class.super_ = obj_class;
+
+        jni::bind_native_method(obj_class,
+                                Slice::from_c_str("clone"),
+                                Slice::from_c_str("TODO_:)"),
+                                [] {
+                                    auto self = (Object*)load_local(0);
+                                    push_operand_a(*clone(self));
+                                });
 
         // Needs to be deferred until we've completed the above steps.
         invoke_static_block(obj_class);

@@ -39,6 +39,28 @@ class Array {
         if (barray[0] != -1) {
             Runtime.getRuntime().exit(1);
         }
+
+        for (int i = 0; i < intArray.length; ++i) {
+            intArray[i] = i;
+        }
+
+        int[] ia2 = intArray.clone();
+
+        if (intArray.length != ia2.length) {
+            Runtime.getRuntime().exit(1);
+        }
+
+        for (int i = 0; i < ia2.length; ++i) {
+            if (ia2[i] != intArray[i]) {
+                Runtime.getRuntime().exit(1);
+            }
+        }
+
+        ia2[5] = 1000;
+
+        if (ia2[5] == intArray[5]) {
+            Runtime.getRuntime().exit(1);
+        }
     }
 
 }

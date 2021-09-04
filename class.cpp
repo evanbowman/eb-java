@@ -37,6 +37,10 @@ const ClassFile::HeaderSection2* Class::interfaces() const
 const ClassFile::MethodInfo* Class::load_method(Slice method_name,
                                                 Slice type_signature)
 {
+    if (methods_ == nullptr) {
+        return nullptr;
+    }
+
     if (not(flags_ & Flag::has_method_table)) {
         // We can run without a method table, by searching the raw classfile.
 
