@@ -1,5 +1,6 @@
 #include "methodTable.hpp"
 #include "memory.hpp"
+#include "crc32.hpp"
 
 
 
@@ -35,6 +36,10 @@ MethodTableImpl::MethodTableImpl(const ClassFile::HeaderSection4* h4)
                    attr->attribute_length_.get();
         }
     }
+
+    for (auto& mtd : method_cache_) {
+        mtd = nullptr;
+    }
 }
 
 
@@ -42,6 +47,24 @@ MethodTableImpl::MethodTableImpl(const ClassFile::HeaderSection4* h4)
 const ClassFile::MethodInfo*
 MethodTableImpl::load_method(Class* clz, Slice lhs_name, Slice lhs_type)
 {
+    // TODO: This stuff should really be refactored. A method cache loses some
+    // of its effectiveness if it does not cache methods from the
+    // superclasses...
+    auto index = crc32(lhs_name.ptr_, lhs_name.length_) % JVM_METHOD_CACHE_SIZE;
+
+    if (auto mtd = method_cache_[index]) {
+        u16 name_index = mtd->name_index_.get();
+        u16 type_index = mtd->descriptor_index_.get();
+
+        auto rhs_name = clz->constants_->load_string(name_index);
+        auto rhs_type = clz->constants_->load_string(type_index);
+
+        if (rhs_name == lhs_name and rhs_type == lhs_type) {
+            return mtd;
+        }
+    }
+
+
     if (methods_) {
         for (int i = 0; i < method_count_; ++i) {
             u16 name_index = methods_[i]->name_index_.get();
@@ -51,6 +74,7 @@ MethodTableImpl::load_method(Class* clz, Slice lhs_name, Slice lhs_type)
             auto rhs_type = clz->constants_->load_string(type_index);
 
             if (lhs_type == rhs_type and lhs_name == rhs_name) {
+                method_cache_[index] = methods_[i];
                 return methods_[i];
             }
         }

@@ -6,6 +6,12 @@
 
 
 
+#ifndef JVM_METHOD_CACHE_SIZE
+#define JVM_METHOD_CACHE_SIZE 8
+#endif
+
+
+
 namespace java {
 
 
@@ -48,6 +54,7 @@ public:
 private:
     const ClassFile::MethodInfo** methods_ = nullptr;
     u16 method_count_ = 0;
+    const ClassFile::MethodInfo* method_cache_[JVM_METHOD_CACHE_SIZE];
 };
 
 
