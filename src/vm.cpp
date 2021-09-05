@@ -1235,11 +1235,52 @@ bool reference_array_type_compare(Array* array, Slice typedescriptor)
 
 
 
+bool checkcast(Object* obj, Slice class_name)
+{
+
+    if (obj->class_ == &primitive_array_class) {
+        return primitive_array_type_compare((Array*)obj, class_name);
+    } else if (obj->class_ == &reference_array_class) {
+        return reference_array_type_compare((Array*)obj, class_name);
+    }
+
+    {
+        auto other = load_class_by_name(class_name);
+
+        // First pass: direct inheritance
+        auto current = obj->class_;
+        while (current) {
+            if (current == other) {
+                return true;
+            }
+            current = current->super_;
+        }
+
+        // Second pass: check interfaces (slower)
+        current = obj->class_;
+        while (current) {
+            if (auto interfaces = current->interfaces()) {
+                auto vals = (network_u16*)
+                    ((u8*)interfaces + sizeof(ClassFile::HeaderSection2));
+                for (int i = 0; i < interfaces->interfaces_count_.get(); ++i) {
+                    if (class_name == classname(current, vals[i].get())) {
+                        return true;
+                    }
+                }
+            }
+            current = current->super_;
+        }
+    }
+
+    return false;
+}
+
+
+
 bool instanceof (Object * obj, Class* clz)
 {
     auto current = obj->class_;
     while (current) {
-        // FIXME: check for successful cast to implemented interfaces
         if (current == clz) {
             return true;
         }
@@ -1340,6 +1381,11 @@ Exception* execute_bytecode(Class* clz,
                             const u8* bytecode,
                             const ClassFile::ExceptionTable* exception_table)
 {
+#define JVM_THROW_EXN()                                                 \
+    push_operand_a(*(Object*)TODO_throw_proper_exception());            \
+    goto THROW;
+
+
     u32 pc = 0;
 
     while (true) {
@@ -1479,8 +1525,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand_a(*result);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -1506,8 +1551,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -1536,39 +1580,12 @@ Exception* execute_bytecode(Class* clz,
             auto cname =
                 classname(clz, ((network_u16*)&bytecode[pc + 1])->get());
 
-            if (obj->class_ == &primitive_array_class) {
-                if (primitive_array_type_compare((Array*)obj, cname)) {
-                    goto CAST_SUCCESS;
-                } else {
-                    goto CAST_FAILURE;
-                }
-            } else if (obj->class_ == &reference_array_class) {
-                if (reference_array_type_compare((Array*)obj, cname)) {
-                    goto CAST_SUCCESS;
-                } else {
-                    goto CAST_FAILURE;
-                }
+            if (checkcast(obj, cname)) {
+                push_operand_a(*obj);
+                pc += 3;
+            } else {
+                JVM_THROW_EXN();
             }
-
-            {
-                auto other = load_class_by_name(cname);
-
-                auto current = obj->class_;
-                while (current) {
-                    // FIXME: check for successful cast to implemented interfaces
-                    if (current == other) {
-                        goto CAST_SUCCESS;
-                    }
-                    current = current->super_;
-                }
-            }
-            // TODO: throw class cast exception!
-        CAST_FAILURE:
-            unhandled_error("bad cast");
-
-        CAST_SUCCESS:
-            push_operand_a(*obj);
-            pc += 3;
             break;
         }
 
@@ -1670,8 +1687,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (arg == nullptr) {
-                // TODO: NullPointerException
-                return TODO_throw_proper_exception();
+                JVM_THROW_EXN();
             }
 
             auto c = clz->constants_->load(
@@ -1731,8 +1747,7 @@ Exception* execute_bytecode(Class* clz,
                 pop_operand();
 
                 if (obj == nullptr) {
-                    // TODO: NullPointerException
-                    return TODO_throw_proper_exception();
+                    JVM_THROW_EXN();
                 }
 
                 auto c = clz->constants_->load(
@@ -1743,7 +1758,7 @@ Exception* execute_bytecode(Class* clz,
                 u8* obj_ram = obj->data();
 
                 if (sub->size_ not_eq SubstitutionField::Size::b8) {
-                    return TODO_throw_proper_exception();
+                    JVM_THROW_EXN();
                 }
 
                 memcpy(obj_ram + sub->offset_, &value, sizeof(value));
@@ -1756,8 +1771,7 @@ Exception* execute_bytecode(Class* clz,
                 pop_operand();
 
                 if (obj == nullptr) {
-                    // TODO: NullPointerException
-                    return TODO_throw_proper_exception();
+                    JVM_THROW_EXN();
                 }
 
                 auto c = clz->constants_->load(
@@ -1789,11 +1803,7 @@ Exception* execute_bytecode(Class* clz,
                     }
 
                     case 8: {
-                        // Not sure how we could ever get here. long/double
-                        // handled above, as well as the 64 bit case where
-                        // pointers are eight bytes.
-                        return TODO_throw_proper_exception();
-                        break;
+                        JVM_THROW_EXN();
                     }
                     }
                 }
@@ -1938,8 +1948,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (divisor == 0) {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             const s32 result = value / divisor;
 
@@ -2531,8 +2540,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_wide_operand_d(result);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -2555,8 +2563,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -2674,8 +2681,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_wide_operand_l(result);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -2698,8 +2704,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -2725,8 +2730,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand_i(result);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -2752,8 +2756,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -2914,8 +2917,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 *array->address(index) = value;
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -2937,8 +2939,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 *array->address(index) = value;
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -2959,8 +2960,7 @@ Exception* execute_bytecode(Class* clz,
                 u8 value = *array->address(index);
                 push_operand_i(value);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -2981,8 +2981,7 @@ Exception* execute_bytecode(Class* clz,
                 s8 value = *array->address(index);
                 push_operand_i(value);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -3009,8 +3008,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -3037,8 +3035,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand_i(result);
             } else {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
             ++pc;
             break;
@@ -3209,8 +3206,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (rhs == 0) {
-                push_operand_a(*(Object*)TODO_throw_proper_exception());
-                goto THROW;
+                JVM_THROW_EXN();
             }
 
             push_wide_operand_l(lhs / rhs);
@@ -3516,9 +3512,9 @@ void bootstrap()
         invoke_static_block(obj_class);
     }
 
-    if (auto string_class = import_class(Slice::from_c_str("java/lang/String"),
-                                         (const char*)string_class_data)) {
-
+    if (import_class(Slice::from_c_str("java/lang/String"),
+                     (const char*)string_class_data)) {
+        // ...
     } else {
         unhandled_error("failed to load string class");
     }

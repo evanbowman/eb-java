@@ -40,9 +40,10 @@ struct Class {
 
     enum Flag {
         // clang-format off
-        __reserved_0__   = (1 << 0),
-        has_method_table = (1 << 1),
-        __reserved_1__   = (1 << 2),
+        __reserved_0__        = (1 << 0),
+        has_method_table      = (1 << 1),
+        __reserved_1__        = (1 << 2),
+        implements_interfaces = (1 << 3),
         // clang-format on
     };
 

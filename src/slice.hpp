@@ -9,6 +9,11 @@ namespace java {
 
 
 
+// Classfile strings are not null-terminated, so we represent strings as
+// [pointer,length] Slices of the classfile.
+
+
+
 struct Slice {
     const char* ptr_ = nullptr;
     size_t length_ = 0;
@@ -33,7 +38,7 @@ struct Slice {
     bool operator==(const Slice& other) const
     {
         return length_ == other.length_ and
-               strncmp(other.ptr_, ptr_, length_) == 0;
+               memcmp(other.ptr_, ptr_, length_) == 0;
     }
 };
 

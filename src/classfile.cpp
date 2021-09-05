@@ -371,8 +371,8 @@ Class* parse_classfile(Slice classname, const char* str)
 
     if (h2->interfaces_count_.get()) {
         for (int i = 0; i < h2->interfaces_count_.get(); ++i) {
-            // Each interface is merely an index into the constant pool.
             str += sizeof(u16);
+            clz->flags_ |= Class::Flag::implements_interfaces;
         }
     }
     jvm::register_class(classname, clz);
