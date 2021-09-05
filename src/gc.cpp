@@ -4,6 +4,7 @@
 #include "object.hpp"
 #include "returnAddress.hpp"
 #include "vm.hpp"
+#include "classtable.hpp"
 
 
 
@@ -164,8 +165,8 @@ void mark()
         }
     }
 
-    for (auto& info : class_table()) {
-        auto opts = info.class_->options_;
+    classtable::visit([](Class* clz) {
+        auto opts = clz->options_;
 
         while (opts) {
             if (opts->type_ == Class::Option::Type::static_field) {
@@ -179,7 +180,7 @@ void mark()
 
             opts = opts->next_;
         }
-    }
+    });
 }
 
 
@@ -241,8 +242,8 @@ void resolve_forwarding_pointers()
     }
 
     // Resolve addresses in static variables
-    for (auto& info : class_table()) {
-        auto opts = info.class_->options_;
+    classtable::visit([](Class* clz) {
+        auto opts = clz->options_;
 
         while (opts) {
             if (opts->type_ == Class::Option::Type::static_field) {
@@ -257,7 +258,7 @@ void resolve_forwarding_pointers()
 
             opts = opts->next_;
         }
-    }
+    });
 
     // Now, scan the heap, and fix internal pointers to other objects...
     {

@@ -1,6 +1,7 @@
 #include "array.hpp"
 #include "class.hpp"
 #include "classfile.hpp"
+#include "classtable.hpp"
 #include "endian.hpp"
 #include "gc.hpp"
 #include "jar.hpp"
@@ -662,20 +663,6 @@ struct Bytecode {
 
 
 
-// FIXME: use a different datastructure for the class table (perhaps an
-// intrusive binary tree?). We have no idea how many classes will be in the
-// system.
-static ClassTable __class_table;
-
-
-
-ClassTable& class_table()
-{
-    return __class_table;
-}
-
-
-
 void invoke_static_block(Class* clz);
 
 
@@ -712,7 +699,7 @@ Class* import(Slice classpath)
 
 void register_class(Slice name, Class* clz)
 {
-    __class_table.push_back({name, clz});
+    classtable::insert(name, clz);
 }
 
 
@@ -890,10 +877,8 @@ Exception* invoke_method(Class* clz,
 
 Class* load_class_by_name(Slice class_name)
 {
-    for (auto& entry : __class_table) {
-        if (entry.name_ == class_name) {
-            return entry.class_;
-        }
+    if (auto entry = classtable::load(class_name)) {
+        return entry;
     }
 
     if (auto clz = import(class_name)) {
