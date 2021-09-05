@@ -18,7 +18,6 @@ MethodTableImpl::MethodTableImpl(const ClassFile::HeaderSection4* h4)
         alignof(ClassFile::MethodInfo));
 
     if (methods_ == nullptr) {
-        puts("failed to alloc method table");
         while (true)
             ; // TODO: raise error...
     }

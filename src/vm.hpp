@@ -11,6 +11,11 @@ namespace jvm {
 
 
 
+[[noreturn]]
+void unhandled_error(const char* description);
+
+
+
 #ifndef JVM_OPERAND_STACK_SIZE
 #define JVM_OPERAND_STACK_SIZE 512
 #endif

@@ -355,9 +355,7 @@ u32 collect()
     heap::__overwrite_end(heap::end() - freed_bytes);
 
     if ((size_t)heap::end() % alignof(Object) not_eq 0) {
-        puts("heap corruption!?");
-        while (true)
-            ;
+        unhandled_error("heap corruption");
     }
 
     return freed_bytes;

@@ -1,6 +1,7 @@
 #include "memory.hpp"
 #include "gc.hpp"
 #include <stdlib.h>
+#include "vm.hpp"
 
 
 
@@ -202,9 +203,7 @@ void* allocate(size_t size, size_t alignment)
 
 
     if (alloc_ptr < heap::heap_alloc) {
-        puts("oom!");
-        while (true)
-            ;
+        unhandled_error("oom!");
     }
 
     heap::heap_end = alloc_ptr;

@@ -46,19 +46,13 @@ std::pair<SubstitutionField::Size, bool> get_field_size(Slice field_type)
         } else if (sizeof(Object*) == 8) {
             field_size = SubstitutionField::b8;
         } else {
-            puts("unsupported architecture");
-            while (true)
-                ;
+            jvm::unhandled_error("unsupported architecture");
         }
 
         is_object = true;
 
     } else {
-        std::cout << std::string(field_type.ptr_, field_type.length_)
-                  << std::endl;
-        puts("TODO: field sizes...");
-        while (true)
-            ;
+        jvm::unhandled_error("invalid field size");
     }
     return {field_size, is_object};
 }
@@ -290,9 +284,7 @@ const char* parse_classfile_fields(const char* str,
                 if (field.valid_) {
 
                     if (field.offset_ > 2047) {
-                        puts("TODO: error, offset too large to fit in sub");
-                        while (true)
-                            ;
+                        jvm::unhandled_error("field offset exceeds maximum");
                     }
 
                     clz->constants_->bind_field(i + 1, field);
@@ -361,9 +353,7 @@ Class* parse_classfile(Slice classname, const char* str)
     auto clz = jvm::classmemory::allocate<Class>();
 
     if (not clz) {
-        puts("failed to alloc constant class memory");
-        while (true)
-            ; // TODO: raise error
+        jvm::unhandled_error("failed to alloc classmemory");
     }
 
     new (clz) Class();

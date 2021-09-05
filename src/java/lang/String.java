@@ -2,15 +2,27 @@ package java.lang;
 
 
 
-public class String {
+public final class String {
 
 
-    private final char data[];
+    private final char[] value;
 
 
-    String(char[] data)
+    public String()
     {
-        this.data = data.clone();
+        value = new char[0];
+    }
+
+
+    public String(String original)
+    {
+        this.value = original.value;
+    }
+
+
+    public String(char[] value)
+    {
+        this.value = value.clone();
     }
 
 

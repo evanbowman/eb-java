@@ -57,9 +57,7 @@ void ConstantPoolCompactImpl::reserve_fields(int count)
     }
 
     if (bindings_) {
-        puts("error: reserve_fields!");
-        while (true)
-            ;
+        jvm::unhandled_error("reserve fields called twice");
     }
 
     bindings_ = (FieldBinding*)jvm::classmemory::allocate(
@@ -72,9 +70,7 @@ void ConstantPoolCompactImpl::reserve_fields(int count)
     }
 
     if (bindings_ == nullptr) {
-        puts("malloc failed!");
-        while (true)
-            ;
+        jvm::unhandled_error("alloc failed");
     }
 
     binding_count_ = count;

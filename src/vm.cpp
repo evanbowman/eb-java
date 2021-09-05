@@ -42,13 +42,20 @@ Class return_address_class;
 
 
 
+[[noreturn]]
+void unhandled_error(const char* description)
+{
+    puts(description);
+    while (1) ;
+}
+
+
+
 ReturnAddress* make_return_address(u32 pc)
 {
     auto mem = (ReturnAddress*)heap::allocate(sizeof(ReturnAddress));
     if (mem == nullptr) {
-        puts("oom");
-        while (true)
-            ;
+        unhandled_error("oom");
     }
     new (mem) ReturnAddress(&return_address_class, pc);
 
@@ -59,8 +66,8 @@ ReturnAddress* make_return_address(u32 pc)
 
 OperandStack __operand_stack;
 // We need to keep track of operand types, for garbage collection purposes, as
-// well as for the obnoxious dup_x2 etc. instructions that require knowledge of
-// the width of operand stack values.
+// well as for putfield (which needs to know whether a stack operand is
+// long/double).
 OperandTypes __operand_types;
 
 
@@ -717,7 +724,6 @@ Exception* execute_bytecode(Class* clz,
 void pop_arguments(const ArgumentInfo& argc)
 {
     for (int i = 0; i < argc.operand_count_; ++i) {
-        // puts("pop argument");
         pop_operand();
     }
 }
@@ -884,9 +890,7 @@ Class* load_class_by_name(Slice class_name)
     if (auto clz = import(class_name)) {
         return clz;
     } else {
-        puts("missing class!");
-        while (true)
-            ;
+        unhandled_error("missing class!");
     }
 }
 
@@ -975,10 +979,7 @@ static Exception* dispatch_method(Class* clz,
             // instruction.
             Class* t_clz = load_class(clz, ref->class_index_.get());
             if (t_clz == nullptr) {
-                printf("failed to load class %d, TODO: raise error...\n",
-                       ref->class_index_.get());
-                while (true)
-                    ;
+                unhandled_error("failed to load class, TODO: raise error");
             }
             return lookup_method(t_clz, lhs_name, lhs_type);
         }
@@ -1012,9 +1013,7 @@ Object* make_instance_impl(Class* clz)
 
     auto mem = (Object*)heap::allocate(instance_size);
     if (mem == nullptr) {
-        puts("oom");
-        while (true)
-            ;
+        unhandled_error("oom");
     }
     new (mem) Object(clz);
     return mem;
@@ -1031,8 +1030,7 @@ Object* clone(Object* self)
 
         auto dst = (Array*)jvm::heap::allocate(src->memory_footprint());
         if (dst == nullptr) {
-            puts("TODO: throw oom error");
-            while (true) ;
+            unhandled_error("oom");
         }
 
         memcpy(dst, src, src->memory_footprint());
@@ -1098,15 +1096,60 @@ void ldc1(Class* clz, u16 index)
     }
 
     case ClassFile::ConstantType::t_string: {
-        puts("TODO...");
-        while (true) ;
+        auto str = (ClassFile::ConstantString*)c;
+        auto ustr = clz->constants_->load_string(str->string_index_.get());
+
+        // We want to create a char array, and invoke the String(char[])
+        // constructor with the array. In this way, the entire string class can
+        // be written in java.
+
+        {
+            auto array = Array::create(ustr.length_, 1, Array::Type::t_char);
+            array->object_.class_ = &primitive_array_class;
+
+            // Copy utf8 string data from classfile to char array.
+            memcpy(array->data(), ustr.ptr_, ustr.length_);
+
+            // Preserve on stack, in case string instance allocation below
+            // triggers the gc. We'll need the array to be on the stack when
+            // invoking the string constructor anyway.
+            push_operand_a(*(Object*)array);
+        }
+
+
+        auto string_class = load_class_by_name(Slice::from_c_str("java/lang/String"));
+
+        push_operand_a(*(Object*)make_instance_impl(string_class));
+
+        // After calling the constructor, we want to leave a copy of the string
+        // on the stack.
+        dup_x2();
+
+        swap(); // reorder arguments on stack:  ... self, char[] -->
+
+        auto ctor_typeinfo = Slice::from_c_str("([C)V");
+        if (auto mtd = string_class->load_method(Slice::from_c_str("<init>"),
+                                                 ctor_typeinfo)) {
+            ArgumentInfo argc;
+            argc.argument_count_ = 2;
+            argc.operand_count_ = 2;
+            auto exn = invoke_method(string_class,
+                                     (Object*)load_operand(1),
+                                     mtd,
+                                     argc,
+                                     ctor_typeinfo);
+            if (exn) {
+                unhandled_error("exception from String(char[])");
+            }
+        } else {
+            unhandled_error("missing String(char[])");
+        }
+
         break;
     }
 
     default:
-        puts("unhandled ldc...");
-        while (true)
-            ;
+        unhandled_error("unhandled ldc");
         break;
     }
 }
@@ -1138,9 +1181,7 @@ void ldc2(Class* clz, u16 index)
     }
 
     default:
-        puts("invalid ldc...");
-        while (true)
-            ;
+        unhandled_error("invalid ldc2");
         break;
     }
 }
@@ -1269,9 +1310,7 @@ void make_invokedynamic_callsite(Class* clz, int bootstrap_method_index)
                 (ClassFile::ConstantRef*)clz->constants_->load(
                     method_info->bootstrap_method_ref_.get());
 
-            puts("TODO: finish implementing invokedynamic");
-            while (true)
-                ;
+            unhandled_error("TODO: finish implementing invokedynamic");
         }
     }
 }
@@ -1360,9 +1399,7 @@ Exception* execute_bytecode(Class* clz,
             auto array = Array::create(len, c);
 
             if (array == nullptr) {
-                puts("TODO: ran out of memory, TODO: throw oom");
-                while (true)
-                    ;
+                unhandled_error("oom");
             }
 
             array->object_.class_ = &reference_array_class;
@@ -1413,9 +1450,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             push_operand_i(array->size_);
@@ -1435,9 +1470,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -1462,9 +1495,7 @@ Exception* execute_bytecode(Class* clz,
                           "and float are four bytes");
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             pop_operand();
@@ -1532,9 +1563,7 @@ Exception* execute_bytecode(Class* clz,
             }
             // TODO: throw class cast exception!
         CAST_FAILURE:
-            puts("bad cast");
-            while (true)
-                ;
+            unhandled_error("bad cast");
 
         CAST_SUCCESS:
             push_operand_a(*obj);
@@ -1807,9 +1836,7 @@ Exception* execute_bytecode(Class* clz,
                     }
                 }
             } else {
-                puts("TODO: critical error");
-                while (true)
-                    ;
+                unhandled_error("critical error in getstatic");
             }
             pc += 3;
             break;
@@ -1851,9 +1878,7 @@ Exception* execute_bytecode(Class* clz,
                     }
                 }
             } else {
-                puts("TODO: critical error");
-                while (true)
-                    ;
+                unhandled_error("critical error in putstatic");
             }
             pc += 3;
             break;
@@ -2306,6 +2331,7 @@ Exception* execute_bytecode(Class* clz,
             auto result = lhs - rhs;
             push_operand_f(result);
             ++pc;
+            break;
         }
 
         case Bytecode::fadd: {
@@ -2496,9 +2522,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -2524,9 +2548,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -2643,9 +2665,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -2671,9 +2691,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -2698,9 +2716,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -2729,9 +2745,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -2893,9 +2907,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -2918,17 +2930,12 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
                 *array->address(index) = value;
             } else {
-                puts("out of bounds!?");
-                while (1)
-                    ;
                 push_operand_a(*(Object*)TODO_throw_proper_exception());
                 goto THROW;
             }
@@ -2944,9 +2951,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -2968,9 +2973,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -2999,9 +3002,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -3027,9 +3028,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                puts("TODO: nullptr exception");
-                while (true)
-                    ;
+                unhandled_error("nullptr exception");
             }
 
             if (array->check_bounds(index)) {
@@ -3357,8 +3356,8 @@ Exception* execute_bytecode(Class* clz,
             make_invokedynamic_callsite(
                 clz, info->bootstrap_method_attr_index_.get());
 
-            while (true)
-                ;
+            // TODO...
+
             pc += 5;
             break;
         }
@@ -3467,6 +3466,7 @@ Exception* execute_bytecode(Class* clz,
 #endif
 
 
+INCBIN(string_class, PROJECT_ROOT"src/java/lang/String.class");
 INCBIN(object_class, PROJECT_ROOT"src/java/lang/Object.class");
 INCBIN(runtime_class, PROJECT_ROOT"src/java/lang/Runtime.class");
 INCBIN(throwable_class, PROJECT_ROOT"src/java/lang/Throwable.class");
@@ -3484,8 +3484,7 @@ void invoke_static_block(Class* clz)
         if (exn) {
             // TODO: what to do! I'm not really sure where we should propagate
             // an exception from a static block...
-            while (true)
-                ;
+            unhandled_error("exception from static block");
         }
     }
 }
@@ -3516,6 +3515,11 @@ void bootstrap()
         invoke_static_block(obj_class);
     }
 
+    if (auto string_class = import_class(Slice::from_c_str("java/lang/String"),
+                                         (const char*)string_class_data)) {
+        puts("loaded string class!");
+    }
+
     if (auto runtime_class =
             import_class(Slice::from_c_str("java/lang/Runtime"),
                          (const char*)runtime_class_data)) {
@@ -3542,7 +3546,6 @@ void bootstrap()
                                 Slice::from_c_str("freeMemory"),
                                 Slice::from_c_str("TODO_:)"),
                                 [] {
-                                    heap::print_stats([](const char* str) { printf("%s", str); });
                                     push_wide_operand_l(jvm::heap::total() -
                                                         jvm::heap::used());
                                 });
