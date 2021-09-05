@@ -3,8 +3,7 @@ Regression: [![Build Status](https://app.travis-ci.com/evanbowman/eb-java.svg?br
 
 # eb-java
 
-A small Java virtual machine implementation, runs with limited memory. Intended for microcontrollers. Each class occupies twenty-four bytes in a 32-bit system. Each member field within a class allocates a two-byte descriptor. All instances of objects are packed, so each member field is layed out in memory with no wasted space in between. Includes a compacting garbage collector. This project is in its early stages, I've only been working on it for a few days.
-
+A small Java virtual machine implementation, runs with limited memory. Intended for microcontrollers.
 By default, the virtual machine uses 256kb of RAM for its heap, and a bit more memory for the operand stack.
 
 I have not finished this project yet, but eb-java does currently implement almost all of the Java instruction set (I'm still working on invokedynamic :)), and I've written a number of unit tests.
@@ -28,3 +27,21 @@ Limitations:
 * The VM implementation does not support single objects larger than 2047 bytes (no limitation on arrays, though, other than the heap size). You would need to put quite a lot of fields in a class to exceed the limit, though... the largest datatype, a long integer, occupies eight bytes, so 255 long integers in a single class (or 511 int variables).
 * The default heap occupies 256kb. The system can be configured with a larger heap, but currently, you should not configure the heap to anything larger than 256mb (the theoretical upper limit).
 * No support for jars with zip compression. None planned.
+
+## Internals
+
+### Memory Layout
+
+The vm implementation allocates Objects, Classes, and metadata from a single contiguous heap. The system allocates objects from the beginning of the heap, and class metadata from the end of the heap. When the objects and the metadata collide, the virtual machine runs a fast compacting garbage collector, to free up space within the object region of the heap, leaving room for more instances or metadata. The vm never deallocates metadata. When the heap compactor fails to free up enough bytes for another allocation, the VM halts with an out of memory error.
+```
+Heap Chart   (*) used   (.) unused
+*************...................................................................
+*************...................................................................
+*************...................................................................
+************....................................................................
+************...................................................................*
+objects 40232 bytes -->                                 <-- class info 832 bytes
+heap used 41064, remaining 214936
+```
+
+Classes themselves occupy about twenty-four bytes (assuming 32 bit), and the classtable datastructure requires a few additional bytes per class. Each field defined in a class will allocate a two-byte descriptor, to speed up field lookup (otherwise we'd need to essentially perform dynamic linking whenever a class accesses a field). Static variables also allocate descriptors, which are a bit larger than instance field descriptors, as static fields are singletons, and I have not spent as much time optimizing storage for statics. The implementation packs all object instances, so the vm stores class fields in memory with no space in-between (which saves a lot of memory, but does make loading fields sligtly slower, as packing objects introduces some extra copies due to alignment).
