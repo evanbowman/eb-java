@@ -3470,9 +3470,15 @@ Exception* execute_bytecode(Class* clz,
 
 
 
-INCBIN(object_class, "java/lang/Object.class");
-INCBIN(runtime_class, "java/lang/Runtime.class");
-INCBIN(throwable_class, "java/lang/Throwable.class");
+
+#ifndef PROJECT_ROOT
+#define PROJECT_ROOT ""
+#endif
+
+
+INCBIN(object_class, PROJECT_ROOT"src/java/lang/Object.class");
+INCBIN(runtime_class, PROJECT_ROOT"src/java/lang/Runtime.class");
+INCBIN(throwable_class, PROJECT_ROOT"src/java/lang/Throwable.class");
 
 
 

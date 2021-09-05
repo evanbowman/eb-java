@@ -1,4 +1,4 @@
 # TODO: create a makefile. I threw this project together over the course of a
 # few days, I haven't made a makefile/CMakeLists yet.
 
-g++ -pedantic -Wall -O2 -std=c++14 -g vm.cpp class.cpp jni.cpp classfile.cpp jar.cpp constantPool.cpp array.cpp methodTable.cpp memory.cpp gc.cpp -o eb-java
+g++ -pedantic -Wall -O2 -std=c++14 -DPROJECT_ROOT=\"$(pwd)/\" -g src/vm.cpp src/class.cpp src/jni.cpp src/classfile.cpp src/jar.cpp src/constantPool.cpp src/array.cpp src/methodTable.cpp src/memory.cpp src/gc.cpp -o eb-java
