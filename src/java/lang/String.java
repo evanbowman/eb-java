@@ -26,4 +26,23 @@ public final class String {
     }
 
 
+    public boolean isEmpty()
+    {
+        return value.length == 0;
+    }
+
+
+    public char charAt(int index)
+    {
+        // if ((index < 0) || (index >= value.length)) {
+        //     throw new StringIndexOutOfBoundsException(index);
+        // }
+        return value[index];
+    }
+
+
+    public int length()
+    {
+        return value.length;
+    }
 }

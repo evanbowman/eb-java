@@ -327,6 +327,7 @@ void dup_x1()
 void dup_x2()
 {
     // FIXME: would be more efficient to push a copy and swap
+
     auto v1 = __operand_stack.back();
     __operand_stack.insert(__operand_stack.end() - 3, v1);
 
@@ -1123,7 +1124,7 @@ void ldc1(Class* clz, u16 index)
 
         // After calling the constructor, we want to leave a copy of the string
         // on the stack.
-        dup_x2();
+        dup_x1();
 
         swap(); // reorder arguments on stack:  ... self, char[] -->
 
@@ -3517,7 +3518,9 @@ void bootstrap()
 
     if (auto string_class = import_class(Slice::from_c_str("java/lang/String"),
                                          (const char*)string_class_data)) {
-        puts("loaded string class!");
+
+    } else {
+        unhandled_error("failed to load string class");
     }
 
     if (auto runtime_class =
