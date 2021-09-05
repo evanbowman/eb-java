@@ -1022,9 +1022,7 @@ Object* clone(Object* self)
 
         auto src = (Array*)self;
 
-        puts("clone array!");
-
-        auto dst = Array::create(src->size_, src->element_size_);
+        auto dst = (Array*)jvm::heap::allocate(src->memory_footprint());
         if (dst == nullptr) {
             puts("TODO: throw oom error");
             while (true) ;
@@ -1142,15 +1140,18 @@ bool primitive_array_type_compare(Array* array, Slice typedescriptor)
         if (typedescriptor.ptr_[0] not_eq '[') {
             return false;
         }
+
+        auto type = array->metadata_.primitive_.type_;
+
         switch (typedescriptor.ptr_[1]) {
-        case 'I': return array->primitive_type_ == Array::Type::t_int;
-        case 'F': return array->primitive_type_ == Array::Type::t_float;
-        case 'S': return array->primitive_type_ == Array::Type::t_short;
-        case 'C': return array->primitive_type_ == Array::Type::t_char;
-        case 'J': return array->primitive_type_ == Array::Type::t_long;
-        case 'D': return array->primitive_type_ == Array::Type::t_double;
-        case 'B': return array->primitive_type_ == Array::Type::t_byte;
-        case 'Z': return array->primitive_type_ == Array::Type::t_boolean;
+        case 'I': return type == Array::Type::t_int;
+        case 'F': return type == Array::Type::t_float;
+        case 'S': return type == Array::Type::t_short;
+        case 'C': return type == Array::Type::t_char;
+        case 'J': return type == Array::Type::t_long;
+        case 'D': return type == Array::Type::t_double;
+        case 'B': return type == Array::Type::t_byte;
+        case 'Z': return type == Array::Type::t_boolean;
         }
     }
     // TODO: what about other types, like byte?
@@ -1336,7 +1337,9 @@ Exception* execute_bytecode(Class* clz,
             auto len = load_operand_i(0);
             pop_operand();
 
-            auto array = Array::create(len, sizeof(Object*));
+            auto c = load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
+
+            auto array = Array::create(len, c);
 
             if (array == nullptr) {
                 puts("TODO: ran out of memory, TODO: throw oom");
@@ -1377,8 +1380,9 @@ Exception* execute_bytecode(Class* clz,
                 break;
             }
 
-            auto array = Array::create(element_count, element_size);
-            array->primitive_type_ = (Array::Type)bytecode[pc + 1];
+            auto array = Array::create(element_count,
+                                       element_size,
+                                       (Array::Type)bytecode[pc + 1]);
 
             array->object_.class_ = &primitive_array_class;
             push_operand_a(*(Object*)array);
