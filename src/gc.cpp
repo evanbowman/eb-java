@@ -298,16 +298,17 @@ void resolve_forwarding_pointers()
 // address to a lower address, during heap compaction.
 void compacting_memmove(u8* dest, u8* src, size_t amount)
 {
+    if (dest == src) {
+        // Nothing to do.
+        return;
+    }
+
     const bool is_overlapping = dest + amount >= src;
 
     if (is_overlapping) {
-        if (dest == src) {
-            // Nothing to do.
-            return;
-        } else {
-            while (amount--) {
-                *(dest++) = *(src++);
-            }
+
+        while (amount--) {
+            *(dest++) = *(src++);
         }
     } else {
         memcpy(dest, src, amount);
