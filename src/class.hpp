@@ -1,6 +1,5 @@
 #pragma once
 
-#include "bitvector.hpp"
 #include "classfile.hpp"
 #include "constantPool.hpp"
 #include "slice.hpp"

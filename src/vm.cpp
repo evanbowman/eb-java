@@ -1097,6 +1097,12 @@ void ldc1(Class* clz, u16 index)
         break;
     }
 
+    case ClassFile::ConstantType::t_string: {
+        puts("TODO...");
+        while (true) ;
+        break;
+    }
+
     default:
         puts("unhandled ldc...");
         while (true)
