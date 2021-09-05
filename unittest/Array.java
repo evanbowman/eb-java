@@ -5,8 +5,44 @@ package test;
 class Array {
 
 
+    // Verify that array fields work correctly.
+    public static int[] foo = new int[30];
+
+
+    static
+    {
+        foo[4] = 10;
+    }
+
+
+    int call()
+    {
+        return 8;
+    }
+
+
+    // Pass an array as a parameter, make sure parameters are passed correctly
+    // for array types.
+    static void arrayParamTest(int a, Object[] b, char c)
+    {
+        if (a != 5 || ((Array)b[1]).call() != 8 || c != 'n') {
+            Runtime.getRuntime().exit(1);
+        }
+    }
+
+
     public static void main(String[] args)
     {
+        Object[] param = new Object[3];
+        param[1] = new Array();
+
+
+        arrayParamTest(5, param, 'n');
+
+        if (foo[4] != 10) {
+            Runtime.getRuntime().exit(1);
+        }
+
         long[] longArray = new long[4];
 
         if (longArray.length != 4) {

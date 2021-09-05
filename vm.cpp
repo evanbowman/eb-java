@@ -781,6 +781,28 @@ void bind_arguments(Object* self,
                 break;
             }
 
+            case '[':
+                ++i;
+                while (str[i] == '[') {
+                    ++i;
+                }
+                if (str[i] not_eq 'L') {
+                    // We're a primitive array. Only one character follows the
+                    // first one.
+                    ++i;
+                    store_local(local_param_index,
+                                load_operand(stack_load_index--),
+                                OperandTypeCategory::object);
+                    ++local_param_index;
+                    break;
+                }
+                goto OBJECT; // Intentional fallthrough. We started parsing an
+                             // array, only to find that it's an array of
+                             // objects. Continue parsing in the next case for
+                             // 'L'.
+
+
+            OBJECT:
             case 'L':
                 store_local(local_param_index,
                             load_operand(stack_load_index--),
@@ -1162,15 +1184,20 @@ bool primitive_array_type_compare(Array* array, Slice typedescriptor)
 
 bool reference_array_type_compare(Array* array, Slice typedescriptor)
 {
-    // FIXME! We need to find a way to store metadata in an array about which
-    // class of objects that it contains. Perhaps a class table index? But that
-    // won't work when we move away from a fixed-size class table. We cannot
-    // simply create new classes on the heap for every array of objects that we
-    // create, but we do need to be able to perform checked casts. Maybe we need
-    // to store an additional class pointer in array objects... I can't think of
-    // a better idea.
+    [[maybe_unused]]
+    auto c = array->metadata_.class_type_;
 
-    return true;
+    if (typedescriptor.length_ > 2) {
+        // NOTE: The ref array class type desc begins with "[L"
+        typedescriptor.ptr_ += 2;
+        typedescriptor.length_ -= 2;
+
+        // TODO...
+
+        return true;
+    } else {
+        return false;
+    }
 }
 
 

@@ -15,8 +15,8 @@ eb-java supports jar files, but you need to strip compression from the jars befo
 
 Remaining work:
 * Implement more of the standard JRE classes
-* Implement the bloated /java/lang/String class
 * Finish implementing invokedynamic
+* Multidimensional Arrays
 * More unit tests
 * Realistically, there are problably a couple of bugs, which will hopefully be uncovered by extensive unit testing
 

@@ -309,11 +309,30 @@ inline ArgumentInfo parse_arguments(Slice type_desc)
             ;
             break;
 
+            // Array
+        case '[':
+            ++i;
+            while (str[i] == '[') {
+                // Multidimensional arrays include an opening bracket for each
+                // dimension. But, they dont't take up any more stack slots than
+                // a regular array, so we just want to skip over the extraneous
+                // characters.
+                ++i;
+            }
+
+            if (str[i] != 'L') {
+                ++i;
+                ++result.argument_count_;
+                ++result.operand_count_;
+                break;
+            }
+            // Intentional fallthrough (array of objects)
+
         case 'L':
             // Object Reference
             ++result.argument_count_;
             ++result.operand_count_;
-            ;
+
             while (str[i] not_eq ';') {
                 ++i;
             }
