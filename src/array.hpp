@@ -49,8 +49,7 @@ struct Array {
     // Constructor for arrays of primitive datatypes (int, char, float, etc.)
     Array(int size, u8 element_size, Type primitive_type)
         : object_(nullptr), // Fill in the class pointer later
-          size_(size),
-          is_primitive_(1)
+          size_(size), is_primitive_(1)
     {
         metadata_.primitive_.element_size_ = element_size;
         metadata_.primitive_.type_ = primitive_type;
@@ -61,9 +60,7 @@ struct Array {
     // about the type of object stored in the array, so that we can correctly
     // implement checked casts.
     Array(int size, Class* class_type)
-        : object_(nullptr),
-          size_(size),
-          is_primitive_(0)
+        : object_(nullptr), size_(size), is_primitive_(0)
     {
         metadata_.class_type_ = class_type;
     }

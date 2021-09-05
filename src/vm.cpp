@@ -42,11 +42,11 @@ Class return_address_class;
 
 
 
-[[noreturn]]
-void unhandled_error(const char* description)
+[[noreturn]] void unhandled_error(const char* description)
 {
     puts(description);
-    while (1) ;
+    while (1)
+        ;
 }
 
 
@@ -1118,7 +1118,8 @@ void ldc1(Class* clz, u16 index)
         }
 
 
-        auto string_class = load_class_by_name(Slice::from_c_str("java/lang/String"));
+        auto string_class =
+            load_class_by_name(Slice::from_c_str("java/lang/String"));
 
         push_operand_a(*(Object*)make_instance_impl(string_class));
 
@@ -1199,14 +1200,22 @@ bool primitive_array_type_compare(Array* array, Slice typedescriptor)
         auto type = array->metadata_.primitive_.type_;
 
         switch (typedescriptor.ptr_[1]) {
-        case 'I': return type == Array::Type::t_int;
-        case 'F': return type == Array::Type::t_float;
-        case 'S': return type == Array::Type::t_short;
-        case 'C': return type == Array::Type::t_char;
-        case 'J': return type == Array::Type::t_long;
-        case 'D': return type == Array::Type::t_double;
-        case 'B': return type == Array::Type::t_byte;
-        case 'Z': return type == Array::Type::t_boolean;
+        case 'I':
+            return type == Array::Type::t_int;
+        case 'F':
+            return type == Array::Type::t_float;
+        case 'S':
+            return type == Array::Type::t_short;
+        case 'C':
+            return type == Array::Type::t_char;
+        case 'J':
+            return type == Array::Type::t_long;
+        case 'D':
+            return type == Array::Type::t_double;
+        case 'B':
+            return type == Array::Type::t_byte;
+        case 'Z':
+            return type == Array::Type::t_boolean;
         }
     }
     // TODO: what about other types, like byte?
@@ -1217,8 +1226,7 @@ bool primitive_array_type_compare(Array* array, Slice typedescriptor)
 
 bool reference_array_type_compare(Array* array, Slice typedescriptor)
 {
-    [[maybe_unused]]
-    auto c = array->metadata_.class_type_;
+    [[maybe_unused]] auto c = array->metadata_.class_type_;
 
     if (typedescriptor.length_ > 2) {
         // NOTE: The ref array class type desc begins with "[L"
@@ -1260,8 +1268,8 @@ bool checkcast(Object* obj, Slice class_name)
         current = obj->class_;
         while (current) {
             if (auto interfaces = current->interfaces()) {
-                auto vals = (network_u16*)
-                    ((u8*)interfaces + sizeof(ClassFile::HeaderSection2));
+                auto vals = (network_u16*)((u8*)interfaces +
+                                           sizeof(ClassFile::HeaderSection2));
                 for (int i = 0; i < interfaces->interfaces_count_.get(); ++i) {
                     if (class_name == classname(current, vals[i].get())) {
                         return true;
@@ -1381,8 +1389,8 @@ Exception* execute_bytecode(Class* clz,
                             const u8* bytecode,
                             const ClassFile::ExceptionTable* exception_table)
 {
-#define JVM_THROW_EXN()                                                 \
-    push_operand_a(*(Object*)TODO_throw_proper_exception());            \
+#define JVM_THROW_EXN()                                                        \
+    push_operand_a(*(Object*)TODO_throw_proper_exception());                   \
     goto THROW;
 
 
@@ -1482,9 +1490,8 @@ Exception* execute_bytecode(Class* clz,
                 break;
             }
 
-            auto array = Array::create(element_count,
-                                       element_size,
-                                       (Array::Type)bytecode[pc + 1]);
+            auto array = Array::create(
+                element_count, element_size, (Array::Type)bytecode[pc + 1]);
 
             array->object_.class_ = &primitive_array_class;
             push_operand_a(*(Object*)array);
@@ -1597,9 +1604,11 @@ Exception* execute_bytecode(Class* clz,
                 classname(clz, ((network_u16*)&bytecode[pc + 1])->get());
 
             if (obj->class_ == &primitive_array_class) {
-                push_operand_i(primitive_array_type_compare((Array*)obj, cname));
+                push_operand_i(
+                    primitive_array_type_compare((Array*)obj, cname));
             } else if (obj->class_ == &reference_array_class) {
-                push_operand_i(reference_array_type_compare((Array*)obj, cname));
+                push_operand_i(
+                    reference_array_type_compare((Array*)obj, cname));
             } else {
                 auto other = load_class_by_name(cname);
                 push_operand_i(instanceof (obj, other));
@@ -1690,8 +1699,8 @@ Exception* execute_bytecode(Class* clz,
                 JVM_THROW_EXN();
             }
 
-            auto c = clz->constants_->load(
-                ((network_u16*)&bytecode[pc + 1])->get());
+            auto c =
+                clz->constants_->load(((network_u16*)&bytecode[pc + 1])->get());
 
             auto sub = (SubstitutionField*)c;
 
@@ -3457,16 +3466,15 @@ Exception* execute_bytecode(Class* clz,
 
 
 
-
 #ifndef PROJECT_ROOT
 #define PROJECT_ROOT ""
 #endif
 
 
-INCBIN(string_class, PROJECT_ROOT"src/java/lang/String.class");
-INCBIN(object_class, PROJECT_ROOT"src/java/lang/Object.class");
-INCBIN(runtime_class, PROJECT_ROOT"src/java/lang/Runtime.class");
-INCBIN(throwable_class, PROJECT_ROOT"src/java/lang/Throwable.class");
+INCBIN(string_class, PROJECT_ROOT "src/java/lang/String.class");
+INCBIN(object_class, PROJECT_ROOT "src/java/lang/Object.class");
+INCBIN(runtime_class, PROJECT_ROOT "src/java/lang/Runtime.class");
+INCBIN(throwable_class, PROJECT_ROOT "src/java/lang/Throwable.class");
 
 
 

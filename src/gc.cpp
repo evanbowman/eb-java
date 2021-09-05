@@ -1,10 +1,10 @@
 #include "gc.hpp"
 #include "array.hpp"
+#include "classtable.hpp"
 #include "memory.hpp"
 #include "object.hpp"
 #include "returnAddress.hpp"
 #include "vm.hpp"
-#include "classtable.hpp"
 
 
 

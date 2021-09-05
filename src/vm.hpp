@@ -11,8 +11,7 @@ namespace jvm {
 
 
 
-[[noreturn]]
-void unhandled_error(const char* description);
+[[noreturn]] void unhandled_error(const char* description);
 
 
 

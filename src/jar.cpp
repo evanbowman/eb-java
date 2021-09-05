@@ -1,4 +1,5 @@
 #include "jar.hpp"
+#include "classfile.hpp"
 #include "endian.hpp"
 #include <iostream>
 #include <string.h>
@@ -96,7 +97,19 @@ Slice load_classfile(const char* jar_file_bytes, Slice classpath)
     memcpy(buffer, classpath.ptr_, classpath.length_);
     memcpy(buffer + classpath.length_, ".class", 6);
 
-    return load_file_data(jar_file_bytes, {buffer, classpath.length_ + 6});
+    auto data = load_file_data(jar_file_bytes, {buffer, classpath.length_ + 6});
+
+    if (data.length_ >= sizeof(ClassFile::HeaderSection1)) {
+        if (((ClassFile::HeaderSection1*)data.ptr_)->magic_.get() not_eq
+            0xcafebabe) {
+
+            return Slice{};
+        } else {
+            return data;
+        }
+    } else {
+        return Slice{};
+    }
 }
 
 

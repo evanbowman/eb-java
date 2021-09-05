@@ -1,7 +1,7 @@
 #include "memory.hpp"
 #include "gc.hpp"
-#include <stdlib.h>
 #include "vm.hpp"
+#include <stdlib.h>
 
 
 

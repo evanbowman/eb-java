@@ -1,6 +1,6 @@
 #include "methodTable.hpp"
-#include "memory.hpp"
 #include "crc32.hpp"
+#include "memory.hpp"
 
 
 

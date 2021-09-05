@@ -27,16 +27,14 @@ const ClassFile::HeaderSection2* Class::interfaces() const
 
     auto src = (const ClassFile::HeaderSection1*)classfile_data_;
 
-    const char* str =
-        ((const char*)src) + sizeof(ClassFile::HeaderSection1);
+    const char* str = ((const char*)src) + sizeof(ClassFile::HeaderSection1);
 
     for (int i = 0; i < src->constant_count_.get() - 1; ++i) {
         auto c = (const ClassFile::ConstantHeader*)str;
 
         str += ClassFile::constant_size(c);
 
-        if (c->tag_ == ClassFile::t_double or
-            c->tag_ == ClassFile::t_long) {
+        if (c->tag_ == ClassFile::t_double or c->tag_ == ClassFile::t_long) {
             ++i;
         }
     }

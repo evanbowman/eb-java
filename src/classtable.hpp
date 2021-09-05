@@ -23,6 +23,6 @@ void visit(void (*visitor)(Class*));
 
 
 
-}
-}
-}
+} // namespace classtable
+} // namespace jvm
+} // namespace java
