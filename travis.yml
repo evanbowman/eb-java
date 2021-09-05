@@ -1,0 +1,6 @@
+language: c++
+script: 
+  - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./
+  - ./build-jvm.sh
+  - cd unittest
+  - ./runtests.sh
