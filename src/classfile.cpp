@@ -6,10 +6,6 @@
 
 
 
-const char* get_file_contents(const char* file);
-
-
-
 namespace java {
 
 
