@@ -8,6 +8,15 @@ namespace java {
 
 
 
+namespace jvm {
+
+extern Class primitive_array_class;
+extern Class reference_array_class;
+
+} // namespace jvm
+
+
+
 Array* allocate_array(int data_bytes)
 {
     static_assert(alignof(Array) == alignof(Object), "unsupported alignment");
@@ -34,6 +43,7 @@ Array* Array::create(int size, u8 element_size, Type primitive_type)
     }
 
     new (array) Array(size, element_size, primitive_type);
+    array->object_.class_ = &jvm::primitive_array_class;
     return array;
 }
 
@@ -48,6 +58,7 @@ Array* Array::create(int size, Class* class_type)
     }
 
     new (array) Array(size, class_type);
+    array->object_.class_ = &jvm::reference_array_class;
     return array;
 }
 

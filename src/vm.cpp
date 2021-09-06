@@ -444,6 +444,51 @@ void dup2_x2()
 
 
 
+template <typename F>
+void multi_array_build(Array* parent,
+                       int depth,
+                       int dim,
+                       int dimensions,
+                       F&& create_array)
+{
+    for (int i = 0; i < parent->size_; ++i) {
+        if ((dimensions - 2) - depth == 0) {
+            auto nested = create_array(dim);
+            if (nested == nullptr) {
+                unhandled_error("oom");
+            }
+            memcpy(parent->data(), &nested, sizeof(Array*));
+        } else {
+            Array* nested;
+            memcpy(&nested, parent->data(), sizeof(nested));
+            multi_array_build(nested, depth + 1, dim, dimensions, create_array);
+        }
+    }
+}
+
+
+
+// Extract the nested typename from a multidimensional array type descriptor.
+Slice multi_nested_typename(Slice type_descriptor)
+{
+    int i = 0;
+    while (type_descriptor.ptr_[i] == '[') {
+        ++type_descriptor.ptr_;
+        --type_descriptor.length_;
+    }
+
+    if (type_descriptor.ptr_[i] == 'L') {
+        // Object type descriptors include a trailing semicolon, and a leading
+        // L.
+        ++type_descriptor.ptr_;
+        type_descriptor.length_ -= 2;
+    }
+
+    return type_descriptor;
+}
+
+
+
 void swap()
 {
     std::swap(__operand_stack[__operand_stack.size() - 1],
@@ -500,6 +545,7 @@ struct Bytecode {
         astore_2        = 0x4d,
         astore_3        = 0x4e,
         anewarray       = 0xbd,
+        multianewarray  = 0xc5,
         areturn         = 0xb0,
         aconst_null     = 0x01,
         athrow          = 0xbf,
@@ -1106,7 +1152,6 @@ void ldc1(Class* clz, u16 index)
 
         {
             auto array = Array::create(ustr.length_, 1, Array::Type::t_char);
-            array->object_.class_ = &primitive_array_class;
 
             // Copy utf8 string data from classfile to char array.
             memcpy(array->data(), ustr.ptr_, ustr.length_);
@@ -1473,9 +1518,95 @@ Exception* execute_bytecode(Class* clz,
                 unhandled_error("oom");
             }
 
-            array->object_.class_ = &reference_array_class;
             push_operand_a(*(Object*)array);
             pc += 3;
+            break;
+        }
+
+        case Bytecode::multianewarray: {
+            unhandled_error("TODO: finish implementing multidimensional arrays");
+
+            // auto c = load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
+            const u8 dimensions = bytecode[pc + 3];
+
+            if (dimensions == 1) {
+                unhandled_error("multianewarray with dimension 1");
+                // TODO: branch to the anewarray code.
+            }
+
+            const auto len = load_operand_i(dimensions - 1);
+            push_operand_a(
+                *(Object*)Array::create(len, &reference_array_class));
+
+            Object* result = nullptr;
+
+            {
+                auto outer_array = [] { return (Array*)load_operand(0); };
+
+                if (outer_array() == nullptr) {
+                    unhandled_error("oom");
+                }
+
+                int i = dimensions - 2;
+
+                while (i > -1) {
+                    auto dim = load_operand_i(i + 1);
+
+                    if (i == 0) {
+                        multi_array_build(
+                            outer_array(), i, dim, dimensions, [&](int dim) {
+                                auto cname = multi_nested_typename(classname(
+                                    clz,
+                                    ((network_u16*)&bytecode[pc + 1])->get()));
+                                if (cname.length_ == 1) {
+                                    Array::Type type;
+                                    u8 size;
+                                    switch (cname.ptr_[0]) {
+                                    case 'I':
+                                        size = 4;
+                                        type = Array::Type::t_int;
+                                        break;
+
+                                    default:
+                                        unhandled_error("unsupported primitive "
+                                                        "in multi array");
+                                    }
+                                    return Array::create(dim, size, type);
+
+                                } else {
+                                    return Array::create(
+                                        dim, load_class_by_name(cname));
+                                }
+                            });
+                    } else {
+                        multi_array_build(
+                            outer_array(), i, dim, dimensions, [](int dim) {
+                                return Array::create(dim,
+                                                     &reference_array_class);
+                            });
+                    }
+
+                    --i;
+                }
+
+                // Ok, so now we want to actually fill the array with arrays.
+
+
+                result = (Object*)outer_array();
+                pop_operand();
+            }
+
+            for (int i = 0; i < dimensions; ++i) {
+                pop_operand();
+            }
+
+            if (result) {
+                push_operand_a(*result);
+            } else {
+                unhandled_error("oom?");
+            }
+
+            pc += 4;
             break;
         }
 
@@ -1509,7 +1640,6 @@ Exception* execute_bytecode(Class* clz,
             auto array = Array::create(
                 element_count, element_size, (Array::Type)bytecode[pc + 1]);
 
-            array->object_.class_ = &primitive_array_class;
             push_operand_a(*(Object*)array);
             pc += 2;
             break;
