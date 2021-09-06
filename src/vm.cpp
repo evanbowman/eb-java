@@ -1458,6 +1458,7 @@ Exception* execute_bytecode(Class* clz,
     u32 pc = 0;
 
     while (true) {
+        // printf("%d %d\n", pc, bytecode[pc]);
         switch (bytecode[pc]) {
         case Bytecode::nop:
             ++pc;
@@ -1725,6 +1726,14 @@ Exception* execute_bytecode(Class* clz,
 
         case Bytecode::checkcast: {
             auto obj = (Object*)load_operand(0);
+
+            if (obj == nullptr) {
+                // According to the JVM specification, checkcast for null is a
+                // no-op.
+                pc += 3;
+                break;
+            }
+
             pop_operand();
 
             auto cname =
@@ -1742,6 +1751,12 @@ Exception* execute_bytecode(Class* clz,
         case Bytecode:: instanceof: {
             auto obj = (Object*)load_operand(0);
             pop_operand();
+
+            if (obj == nullptr) {
+                push_operand_i(0);
+                pc += 3;
+                break;
+            }
 
             auto cname =
                 classname(clz, ((network_u16*)&bytecode[pc + 1])->get());
