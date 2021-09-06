@@ -34,6 +34,10 @@ std::pair<SubstitutionField::Size, bool> get_field_size(Slice field_type)
         field_size = SubstitutionField::b8;
     } else if (field_type == Slice::from_c_str("D")) {
         field_size = SubstitutionField::b8;
+    } else if (field_type == Slice::from_c_str("B")) {
+        field_size = SubstitutionField::b1;
+    } else if (field_type == Slice::from_c_str("Z")) {
+        field_size = SubstitutionField::b1;
     } else if (field_type.ptr_[0] == 'L' or /* class instance */
                field_type.ptr_[0] == '[' /* array */) {
         // We use a special size enumeration for objects, not

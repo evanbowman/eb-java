@@ -1560,6 +1560,41 @@ Exception* execute_bytecode(Class* clz,
                                     Array::Type type;
                                     u8 size;
                                     switch (cname.ptr_[0]) {
+                                    case 'F':
+                                        size = 4;
+                                        type = Array::Type::t_float;
+                                        break;
+
+                                    case 'S':
+                                        size = 2;
+                                        type = Array::Type::t_short;
+                                        break;
+
+                                    case 'C':
+                                        size = 1;
+                                        type = Array::Type::t_char;
+                                        break;
+
+                                    case 'J':
+                                        size = 8;
+                                        type = Array::Type::t_long;
+                                        break;
+
+                                    case 'D':
+                                        size = 8;
+                                        type = Array::Type::t_double;
+                                        break;
+
+                                    case 'B':
+                                        size = 1;
+                                        type = Array::Type::t_byte;
+                                        break;
+
+                                    case 'Z':
+                                        size = 1;
+                                        type = Array::Type::t_boolean;
+                                        break;
+
                                     case 'I':
                                         size = 4;
                                         type = Array::Type::t_int;
