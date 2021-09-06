@@ -457,10 +457,10 @@ void multi_array_build(Array* parent,
             if (nested == nullptr) {
                 unhandled_error("oom");
             }
-            memcpy(parent->data(), &nested, sizeof(Array*));
+            memcpy(parent->data() + i * sizeof(Array*), &nested, sizeof(Array*));
         } else {
             Array* nested;
-            memcpy(&nested, parent->data(), sizeof(nested));
+            memcpy(&nested, parent->data() + i * sizeof(Array*), sizeof(nested));
             multi_array_build(nested, depth + 1, dim, dimensions, create_array);
         }
     }
@@ -1458,7 +1458,6 @@ Exception* execute_bytecode(Class* clz,
     u32 pc = 0;
 
     while (true) {
-        // printf("vm loop %d %x\n", pc, bytecode[pc]);
         switch (bytecode[pc]) {
         case Bytecode::nop:
             ++pc;
@@ -1524,8 +1523,6 @@ Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::multianewarray: {
-            unhandled_error("TODO: finish implementing multidimensional arrays");
-
             // auto c = load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
             const u8 dimensions = bytecode[pc + 3];
 
@@ -1650,7 +1647,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                unhandled_error("nullptr exception");
+                unhandled_error("nullptr exception !");
             }
 
             push_operand_i(array->size_);
@@ -1670,7 +1667,7 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (array == nullptr) {
-                unhandled_error("nullptr exception");
+                unhandled_error("nullptr exception, ...");
             }
 
             if (array->check_bounds(index)) {
