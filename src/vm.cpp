@@ -1294,6 +1294,22 @@ bool instanceof (Object * obj, Class* clz)
         }
         current = current->super_;
     }
+
+    current = obj->class_;
+    while (current) {
+        if (auto interfaces = current->interfaces()) {
+            auto vals = (network_u16*)((u8*)interfaces +
+                                       sizeof(ClassFile::HeaderSection2));
+            for (int i = 0; i < interfaces->interfaces_count_.get(); ++i) {
+                if (clz ==
+                    load_class_by_name(classname(current, vals[i].get()))) {
+                    return true;
+                }
+            }
+        }
+        current = current->super_;
+    }
+
     return false;
 }
 
