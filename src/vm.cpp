@@ -9,6 +9,7 @@
 #include "object.hpp"
 #include "returnAddress.hpp"
 #include <string.h>
+#include "stringBuffer.hpp"
 #define INCBIN_PREFIX
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
 #include "incbin.h"
@@ -944,7 +945,11 @@ static Class* load_class_by_name(Slice class_name)
     if (auto clz = import(class_name)) {
         return clz;
     } else {
-        unhandled_error("missing class!");
+        StringBuffer<80> buffer = "missing class: ";
+        for (u32 i = 0; i < class_name.length_; ++i) {
+            buffer.push_back(class_name.ptr_[i]);
+        }
+        unhandled_error(buffer.c_str());
     }
 }
 
@@ -1037,8 +1042,12 @@ static Exception* dispatch_method(Class* clz,
         }
         return invoke_method(mtd.second, self, mtd.first, argc, method_type);
     } else {
-        return make_exception("java/lang/RuntimeException",
-                              "method lookup failed");
+        StringBuffer<80> buffer = "method lookup failed for ";
+        for (u32 i = 0; i < method_name.length_; ++i) {
+            buffer.push_back(method_name.ptr_[i]);
+        }
+
+        return make_exception("java/lang/RuntimeException", buffer.c_str());
     }
 }
 
@@ -1462,8 +1471,10 @@ static bool handle_exception(Class* clz,
 
 
 
-static void make_invokedynamic_callsite(Class* clz, int bootstrap_method_index)
+static Exception* invokedynamic(Class* clz, int bootstrap_method_index)
 {
+    unhandled_error("finish implementing invokedynamic!");
+
     auto opt = (Class::OptionBootstrapMethodInfo*)clz->load_option(
         Class::Option::Type::bootstrap_methods);
 
@@ -1472,13 +1483,33 @@ static void make_invokedynamic_callsite(Class* clz, int bootstrap_method_index)
             opt->bootstrap_methods_->load(bootstrap_method_index);
 
         if (method_info) {
-            [[maybe_unused]] auto ref =
-                (ClassFile::ConstantRef*)clz->constants_->load(
+
+            auto ref =
+                (ClassFile::ConstantMethodHandle*)clz->constants_->load(
                     method_info->bootstrap_method_ref_.get());
 
-            unhandled_error("TODO: finish implementing invokedynamic");
+            auto index = ref->reference_index_.get();
+
+            switch (ref->reference_kind_) {
+            case ClassFile::ReferenceKind::REF_invokeStatic: {
+                return dispatch_method(clz, index, true, false);
+            }
+
+            case ClassFile::ReferenceKind::REF_getField:
+            case ClassFile::ReferenceKind::REF_getStatic:
+            case ClassFile::ReferenceKind::REF_putField:
+            case ClassFile::ReferenceKind::REF_putStatic:
+            case ClassFile::ReferenceKind::REF_invokeVirtual:
+            case ClassFile::ReferenceKind::REF_invokeSpecial:
+            case ClassFile::ReferenceKind::REF_newInvokeSpecial:
+            case ClassFile::ReferenceKind::REF_invokeInterface:
+            default:
+                unhandled_error("unsupported invokedynamic reference kind");
+                break;
+            }
         }
     }
+    unhandled_error("finish implementing invokedynamic!");
 }
 
 
@@ -2389,6 +2420,16 @@ static Exception* execute_bytecode(Class* clz,
 
         case Bytecode::if_icmplt:
             if (load_operand_i(0) > load_operand_i(1)) {
+                pc += ((network_s16*)(bytecode + pc + 1))->get();
+            } else {
+                pc += 3;
+            }
+            pop_operand();
+            pop_operand();
+            break;
+
+        case Bytecode::if_icmpgt:
+            if (load_operand_i(0) < load_operand_i(1)) {
                 pc += ((network_s16*)(bytecode + pc + 1))->get();
             } else {
                 pc += 3;
@@ -3644,12 +3685,16 @@ static Exception* execute_bytecode(Class* clz,
                 (const ClassFile::ConstantInvokeDynamic*)clz->constants_->load(
                     ((network_u16*)(bytecode + pc + 1))->get());
 
-            make_invokedynamic_callsite(
-                clz, info->bootstrap_method_attr_index_.get());
+            auto exn =
+                invokedynamic(clz, info->bootstrap_method_attr_index_.get());
 
-            // TODO...
-
-            pc += 5;
+            if (exn) {
+                if (not handle_exception(clz, exn, pc, exception_table)) {
+                    return exn;
+                }
+            } else {
+                pc += 5;
+            }
             break;
         }
 

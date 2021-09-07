@@ -1,5 +1,5 @@
 
-javac *.java
+javac --release 8 *.java
 mv *.class test/
 jar cf0 Test.jar test
 

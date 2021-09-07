@@ -164,9 +164,21 @@ struct ClassFile {
         // u8 bytes[length_]
     };
 
+    enum ReferenceKind : u8 {
+        REF_getField = 1,
+        REF_getStatic,
+        REF_putField,
+        REF_putStatic,
+        REF_invokeVirtual,
+        REF_invokeStatic,
+        REF_invokeSpecial,
+        REF_newInvokeSpecial,
+        REF_invokeInterface,
+    };
+
     struct ConstantMethodHandle {
         ConstantHeader header_;
-        u8 reference_kind_;
+        ReferenceKind reference_kind_;
         network_u16 reference_index_;
     };
 

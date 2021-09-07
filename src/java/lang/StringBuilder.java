@@ -13,8 +13,10 @@ public final class StringBuilder {
     {
         char[] newData = new char[newCapacity];
 
-        for (int i = 0; i < data.length; ++i) {
-            newData[i] = data[i];
+        if (data != null) {
+            for (int i = 0; i < data.length; ++i) {
+                newData[i] = data[i];
+            }
         }
 
         data = newData;
@@ -48,7 +50,7 @@ public final class StringBuilder {
     }
 
 
-    public void append(String str)
+    public StringBuilder append(String str)
     {
         char[] otherData = str.toCharArray();
 
@@ -57,12 +59,14 @@ public final class StringBuilder {
         for (int i = 0; i < otherData.length; ++i) {
             data[count++] = otherData[i];
         }
+
+        return this;
     }
 
 
-    public void append(int i)
+    public StringBuilder append(int i)
     {
-
+        return this;
     }
 
 
