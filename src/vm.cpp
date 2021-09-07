@@ -3677,10 +3677,8 @@ Exception* execute_bytecode(Class* clz,
 #endif
 
 
-INCBIN(string_class, PROJECT_ROOT "src/java/lang/String.class");
-INCBIN(object_class, PROJECT_ROOT "src/java/lang/Object.class");
-INCBIN(runtime_class, PROJECT_ROOT "src/java/lang/Runtime.class");
-INCBIN(throwable_class, PROJECT_ROOT "src/java/lang/Throwable.class");
+
+INCBIN(lang_jar, PROJECT_ROOT "src/Lang.jar");
 
 
 
@@ -3704,8 +3702,9 @@ void invoke_static_block(Class* clz)
 
 void bootstrap()
 {
-    if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
-                                         (const char*)object_class_data)) {
+    bind_jar((const char*)lang_jar_data);
+
+    if (auto obj_class = import(Slice::from_c_str("java/lang/Object"))) {
         obj_class->super_ = nullptr;
 
         primitive_array_class.super_ = obj_class;
@@ -3722,19 +3721,17 @@ void bootstrap()
 
         // Needs to be deferred until we've completed the above steps.
         invoke_static_block(obj_class);
+    } else {
+        unhandled_error("failed to load object class");
     }
 
-    if (import_class(Slice::from_c_str("java/lang/String"),
-                     (const char*)string_class_data)) {
+    if (import(Slice::from_c_str("java/lang/String"))) {
         // ...
     } else {
         unhandled_error("failed to load string class");
     }
 
-    if (auto runtime_class =
-            import_class(Slice::from_c_str("java/lang/Runtime"),
-                         (const char*)runtime_class_data)) {
-
+    if (auto runtime_class = import(Slice::from_c_str("java/lang/Runtime"))) {
 
         jni::bind_native_method(runtime_class,
                                 Slice::from_c_str("exit"),
@@ -3762,8 +3759,8 @@ void bootstrap()
                                 });
     }
 
-    if (import_class(Slice::from_c_str("java/lang/Throwable"),
-                     (const char*)throwable_class_data)) {
+    if (import(Slice::from_c_str("java/lang/Throwable"))) {
+        // ...
     }
 }
 
