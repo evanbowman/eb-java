@@ -24,20 +24,32 @@ namespace jvm {
 
 
 
-static const char* jar_file_data;
+struct AvailableJar {
+    const char* jar_file_data_;
+    AvailableJar* next_;
+};
 
 
 
+static AvailableJar* jars;
+
+
+
+void bind_jar(const char* jar_file_data)
+{
+    auto info = classmemory::allocate<AvailableJar>();
+
+    info->jar_file_data_ = jar_file_data;
+    info->next_ = jars;
+    jars = info;
+}
+
+
+
+// Our implementation includes three classes of pseudo-objects, which need to be
+// handled separately from all other java objects.
 Class primitive_array_class;
-
-
-
-// We make the distinction between primitive arrays and reference arrays,
-// because later on, we will need to track gc roots.
 Class reference_array_class;
-
-
-
 Class return_address_class;
 
 
@@ -734,18 +746,19 @@ Class* import_class(Slice classpath, const char* classfile_data)
 
 Class* import(Slice classpath)
 {
-    if (jar_file_data == nullptr) {
-        std::cout << "missing jar, import failed for "
-                  << std::string(classpath.ptr_, classpath.length_)
-                  << std::endl;
-        while (true)
-            ;
+    if (jars == nullptr) {
+        unhandled_error("cannot load class with no jars loaded!");
     }
 
-    auto data = jar::load_classfile(jar_file_data, classpath);
-    if (data.length_) {
-        return import_class(classpath, data.ptr_);
+    auto current = jars;
+    while (current) {
+        auto data = jar::load_classfile(current->jar_file_data_, classpath);
+        if (data.length_) {
+            return import_class(classpath, data.ptr_);
+        }
+        current = current->next_;
     }
+
     return nullptr;
 }
 
@@ -3796,9 +3809,9 @@ int start(Class* entry_point)
 
 int start_from_jar(const char* jar_file_bytes, Slice classpath)
 {
-    jar_file_data = jar_file_bytes;
-
     bootstrap();
+
+    bind_jar(jar_file_bytes);
 
     if (auto clz = java::jvm::import(classpath)) {
         return start(clz);
