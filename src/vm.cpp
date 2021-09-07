@@ -3691,8 +3691,6 @@ void invoke_static_block(Class* clz)
 
 void bootstrap()
 {
-    // NOTE: I manually edited the bytecode in the Object classfile, which is
-    // why I do not provide the source code. It's hand-rolled java bytecode.
     if (auto obj_class = parse_classfile(Slice::from_c_str("java/lang/Object"),
                                          (const char*)object_class_data)) {
         obj_class->super_ = nullptr;
