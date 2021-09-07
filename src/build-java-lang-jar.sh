@@ -1,3 +1,4 @@
+rm Lang.jar
 javac --release 8 java/lang/*.java
 cp java/lang/*.class pkg/java/lang
 cd pkg

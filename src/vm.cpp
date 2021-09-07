@@ -1026,6 +1026,7 @@ static Exception* dispatch_method(Class* clz,
                  ++i) {
                 pop_operand();
             }
+
             return TODO_throw_proper_exception();
         }
     }
@@ -1136,6 +1137,62 @@ Exception* TODO_throw_proper_exception()
 
 
 
+Object* make_string(Slice data)
+{
+    // We want to create a char array, and invoke the String(char[])
+    // constructor with the array. In this way, the entire string class can
+    // be written in java.
+
+    {
+        auto array = Array::create(data.length_, 1, Array::Type::t_char);
+
+        // Copy utf8 string data from classfile to char array.
+        memcpy(array->data(), data.ptr_, data.length_);
+
+        // Preserve on stack, in case string instance allocation below
+        // triggers the gc. We'll need the array to be on the stack when
+        // invoking the string constructor anyway.
+        push_operand_a(*(Object*)array);
+    }
+
+
+    auto string_class =
+        load_class_by_name(Slice::from_c_str("java/lang/String"));
+
+    push_operand_a(*(Object*)make_instance_impl(string_class));
+
+    // After calling the constructor, we want to leave a copy of the string
+    // on the stack.
+    dup_x1();
+
+    swap(); // reorder arguments on stack:  ... self, char[] -->
+
+    auto ctor_typeinfo = Slice::from_c_str("([C)V");
+    if (auto mtd = string_class->load_method(Slice::from_c_str("<init>"),
+                                             ctor_typeinfo)) {
+        ArgumentInfo argc;
+        argc.argument_count_ = 2;
+        argc.operand_count_ = 2;
+        auto exn = invoke_method(string_class,
+                                 (Object*)load_operand(1),
+                                 mtd,
+                                 argc,
+                                 ctor_typeinfo);
+        if (exn) {
+            unhandled_error("exception from String(char[])");
+        }
+    } else {
+        unhandled_error("missing String(char[])");
+    }
+
+    auto result = load_operand(0);
+    pop_operand();
+
+    return (Object*)result;
+}
+
+
+
 void ldc1(Class* clz, u16 index)
 {
     auto c = clz->constants_->load(index);
@@ -1158,53 +1215,7 @@ void ldc1(Class* clz, u16 index)
     case ClassFile::ConstantType::t_string: {
         auto str = (ClassFile::ConstantString*)c;
         auto ustr = clz->constants_->load_string(str->string_index_.get());
-
-        // We want to create a char array, and invoke the String(char[])
-        // constructor with the array. In this way, the entire string class can
-        // be written in java.
-
-        {
-            auto array = Array::create(ustr.length_, 1, Array::Type::t_char);
-
-            // Copy utf8 string data from classfile to char array.
-            memcpy(array->data(), ustr.ptr_, ustr.length_);
-
-            // Preserve on stack, in case string instance allocation below
-            // triggers the gc. We'll need the array to be on the stack when
-            // invoking the string constructor anyway.
-            push_operand_a(*(Object*)array);
-        }
-
-
-        auto string_class =
-            load_class_by_name(Slice::from_c_str("java/lang/String"));
-
-        push_operand_a(*(Object*)make_instance_impl(string_class));
-
-        // After calling the constructor, we want to leave a copy of the string
-        // on the stack.
-        dup_x1();
-
-        swap(); // reorder arguments on stack:  ... self, char[] -->
-
-        auto ctor_typeinfo = Slice::from_c_str("([C)V");
-        if (auto mtd = string_class->load_method(Slice::from_c_str("<init>"),
-                                                 ctor_typeinfo)) {
-            ArgumentInfo argc;
-            argc.argument_count_ = 2;
-            argc.operand_count_ = 2;
-            auto exn = invoke_method(string_class,
-                                     (Object*)load_operand(1),
-                                     mtd,
-                                     argc,
-                                     ctor_typeinfo);
-            if (exn) {
-                unhandled_error("exception from String(char[])");
-            }
-        } else {
-            unhandled_error("missing String(char[])");
-        }
-
+        push_operand_a(*(Object*)make_string(ustr));
         break;
     }
 

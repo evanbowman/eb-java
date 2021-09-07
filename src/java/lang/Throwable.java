@@ -26,4 +26,20 @@ public class Throwable {
     }
 
 
+    public Throwable(Throwable cause)
+    {
+        this.cause = cause;
+    }
+
+
+    public Throwable getCause()
+    {
+        return cause;
+    }
+
+
+    public String getMessage()
+    {
+        return message;
+    }
 }
