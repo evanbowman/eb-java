@@ -1193,6 +1193,41 @@ Object* make_string(Slice data)
 
 
 
+// TODO: This make_exception code isn't used yet, test it...
+Exception* make_exception(const char* classpath, const char* error)
+{
+    push_operand_a(*(Object*)make_string(Slice::from_c_str(error)));
+    auto clz = ((Object*)load_operand(0))->class_;
+    push_operand_a(*make_instance_impl(load_class_by_name(Slice::from_c_str(classpath))));
+    dup_x1();
+    swap();
+
+    auto ctor_typeinfo = Slice::from_c_str("(Ljava/lang/String;)V");
+    if (auto mtd = clz->load_method(Slice::from_c_str("<init>"),
+                                    ctor_typeinfo)) {
+        ArgumentInfo argc;
+        argc.argument_count_ = 2;
+        argc.operand_count_ = 2;
+        auto exn = invoke_method(clz,
+                                 (Object*)load_operand(1),
+                                 mtd,
+                                 argc,
+                                 ctor_typeinfo);
+        if (exn) {
+            unhandled_error("exception while constructing exception!?");
+        }
+    } else {
+        unhandled_error("missing constructor");
+    }
+
+    auto result = load_operand(0);
+    pop_operand();
+
+    return (Object*)result;
+}
+
+
+
 void ldc1(Class* clz, u16 index)
 {
     auto c = clz->constants_->load(index);
