@@ -25,8 +25,6 @@ void bind_native_method(Class* clz,
     if (not(clz->flags_ & Class::Flag::has_method_table)) {
         clz->flags_ |= Class::Flag::has_method_table;
 
-        puts("allocate method table while binding native method");
-
         // NOTE: If the has_method_table flag is false, the methods_ field will
         // be assigned to the section of the classfile consisting of the method
         // implementations.

@@ -1,7 +1,6 @@
 #include "jar.hpp"
 #include "classfile.hpp"
 #include "endian.hpp"
-#include <iostream>
 #include <string.h>
 
 
@@ -49,7 +48,6 @@ Slice load_file_data(const char* jar_file_bytes, Slice path)
         if (hdr->compression_method_.get() not_eq 0) {
             // We cannot support compressed files within jars. Doing so would
             // greatly limit our ability to run larger java programs.
-            puts("invalid compresion!");
             return {nullptr, 0};
         }
 

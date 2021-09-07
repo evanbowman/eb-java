@@ -12,8 +12,10 @@ class Integer {
         try {
             i = i / 0;
             Runtime.getRuntime().exit(1);
-        } catch (Throwable t) {
+        } catch (ArithmeticException e) {
             // TODO: use the correct class in catch expression
+        } catch (Throwable t) {
+            Runtime.getRuntime().exit(1);
         }
 
 

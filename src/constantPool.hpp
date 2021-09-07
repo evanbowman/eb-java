@@ -3,8 +3,6 @@
 #include "classfile.hpp"
 #include "slice.hpp"
 #include "substitutionField.hpp"
-#include <iostream>
-#include <stdio.h>
 
 
 // NOTE: Creating a constant pool in memory for every class takes up a lot of

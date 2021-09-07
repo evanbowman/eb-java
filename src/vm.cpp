@@ -8,13 +8,11 @@
 #include "jni.hpp"
 #include "object.hpp"
 #include "returnAddress.hpp"
-#include <iostream>
 #include <string.h>
 #define INCBIN_PREFIX
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
 #include "incbin.h"
 #include "memory.hpp"
-#include <chrono>
 #include <math.h>
 
 
@@ -35,7 +33,7 @@ static AvailableJar* jars;
 
 
 
-void bind_jar(const char* jar_file_data)
+static void bind_jar(const char* jar_file_data)
 {
     auto info = classmemory::allocate<AvailableJar>();
 
@@ -54,16 +52,7 @@ Class return_address_class;
 
 
 
-[[noreturn]] void unhandled_error(const char* description)
-{
-    puts(description);
-    while (1)
-        ;
-}
-
-
-
-ReturnAddress* make_return_address(u32 pc)
+static ReturnAddress* make_return_address(u32 pc)
 {
     auto mem = (ReturnAddress*)heap::allocate(sizeof(ReturnAddress));
     if (mem == nullptr) {
@@ -76,11 +65,11 @@ ReturnAddress* make_return_address(u32 pc)
 
 
 
-OperandStack __operand_stack;
+static OperandStack __operand_stack;
 // We need to keep track of operand types, for garbage collection purposes, as
 // well as for putfield (which needs to know whether a stack operand is
 // long/double).
-OperandTypes __operand_types;
+static OperandTypes __operand_types;
 
 
 
@@ -98,8 +87,8 @@ OperandTypes& operand_types()
 
 
 
-Locals __locals;
-LocalTypes __local_types;
+static Locals __locals;
+static LocalTypes __local_types;
 
 
 
@@ -117,7 +106,7 @@ LocalTypes& local_types()
 
 
 
-void store_local(int index, void* value, OperandTypeCategory tp)
+static void store_local(int index, void* value, OperandTypeCategory tp)
 {
     __locals[(__locals.size() - 1) - index] = value;
     __local_types[(__local_types.size() - 1) - index] = tp;
@@ -125,14 +114,14 @@ void store_local(int index, void* value, OperandTypeCategory tp)
 
 
 
-void* load_local(int index)
+static void* load_local(int index)
 {
     return __locals[(__locals.size() - 1) - index];
 }
 
 
 
-void store_wide_local(int index, void* value)
+static void store_wide_local(int index, void* value)
 {
     s32* words = (s32*)value;
 
@@ -146,7 +135,7 @@ void store_wide_local(int index, void* value)
 
 
 
-void load_wide_local(int index, void* result)
+static void load_wide_local(int index, void* result)
 {
     s32* words = (s32*)result;
 
@@ -156,7 +145,7 @@ void load_wide_local(int index, void* result)
 
 
 
-void alloc_locals(int count)
+static void alloc_locals(int count)
 {
     for (int i = 0; i < count; ++i) {
         __locals.push_back(nullptr);
@@ -166,7 +155,7 @@ void alloc_locals(int count)
 
 
 
-void free_locals(int count)
+static void free_locals(int count)
 {
     for (int i = 0; i < count; ++i) {
         __locals.pop_back();
@@ -176,7 +165,7 @@ void free_locals(int count)
 
 
 
-void __push_operand_impl(void* value, OperandTypeCategory tp)
+static void __push_operand_impl(void* value, OperandTypeCategory tp)
 {
     __operand_stack.push_back(value);
     __operand_types.push_back(tp);
@@ -184,7 +173,7 @@ void __push_operand_impl(void* value, OperandTypeCategory tp)
 
 
 
-void push_operand_p(void* value)
+static void push_operand_p(void* value)
 {
     __push_operand_impl(value, OperandTypeCategory::primitive);
 }
@@ -193,21 +182,21 @@ void push_operand_p(void* value)
 // Soon, when we add garbage collection, we'll need to make a special
 // distinction for objects vs primitives on the operand stack, so we should
 // remember to push objects with push_operand_a.
-void push_operand_a(Object& value)
+static void push_operand_a(Object& value)
 {
     __push_operand_impl(&value, OperandTypeCategory::object);
 }
 
 
 
-void push_operand_i(s32 value)
+static void push_operand_i(s32 value)
 {
     __push_operand_impl((void*)(intptr_t)value, OperandTypeCategory::primitive);
 }
 
 
 
-void __push_operand_f_impl(float* value)
+static void __push_operand_f_impl(float* value)
 {
     __push_operand_impl((void*)(intptr_t) * (int*)value,
                         OperandTypeCategory::primitive);
@@ -215,35 +204,35 @@ void __push_operand_f_impl(float* value)
 
 
 
-void push_operand_f(float value)
+static void push_operand_f(float value)
 {
     __push_operand_f_impl(&value);
 }
 
 
 
-void* load_operand(int offset)
+static void* load_operand(int offset)
 {
     return __operand_stack[(__operand_stack.size() - 1) - offset];
 }
 
 
 
-OperandTypeCategory operand_type_category(int offset)
+static OperandTypeCategory operand_type_category(int offset)
 {
     return __operand_types[(__operand_types.size() - 1) - offset];
 }
 
 
 
-float __load_operand_f_impl(void** val)
+static float __load_operand_f_impl(void** val)
 {
     return *(float*)val;
 }
 
 
 
-float load_operand_f(int offset)
+static float load_operand_f(int offset)
 {
     auto val = load_operand(offset);
     return __load_operand_f_impl(&val);
@@ -251,14 +240,14 @@ float load_operand_f(int offset)
 
 
 
-s32 load_operand_i(int offset)
+static s32 load_operand_i(int offset)
 {
     return (s32)(intptr_t)load_operand(offset);
 }
 
 
 
-void push_wide_operand(void* value)
+static void push_wide_operand(void* value)
 {
     s32* words = (s32*)value;
 
@@ -271,21 +260,21 @@ void push_wide_operand(void* value)
 
 
 
-void push_wide_operand_l(s64 value)
+static void push_wide_operand_l(s64 value)
 {
     push_wide_operand((void*)&value);
 }
 
 
 
-void push_wide_operand_d(double value)
+static void push_wide_operand_d(double value)
 {
     push_wide_operand((void*)&value);
 }
 
 
 
-s64 load_wide_operand_l(int offset)
+static s64 load_wide_operand_l(int offset)
 {
     s64 result;
     s32* words = (s32*)&result;
@@ -296,14 +285,14 @@ s64 load_wide_operand_l(int offset)
 
 
 
-double __load_wide_operand_d_impl(void* ptr)
+static double __load_wide_operand_d_impl(void* ptr)
 {
     return *(double*)ptr;
 }
 
 
 
-double load_wide_operand_d(int offset)
+static double load_wide_operand_d(int offset)
 {
     static_assert(sizeof(double) == sizeof(u64),
                   "is this even remotely necessary?");
@@ -314,7 +303,7 @@ double load_wide_operand_d(int offset)
 
 
 
-void dup(int offset)
+static void dup(int offset)
 {
     __operand_stack.push_back(
         __operand_stack[(__operand_stack.size() - 1) - offset]);
@@ -325,7 +314,7 @@ void dup(int offset)
 
 
 
-void dup_x1()
+static void dup_x1()
 {
     auto v1 = __operand_stack.back();
     __operand_stack.insert(__operand_stack.end() - 2, v1);
@@ -336,7 +325,7 @@ void dup_x1()
 
 
 
-void dup_x2()
+static void dup_x2()
 {
     // FIXME: would be more efficient to push a copy and swap
 
@@ -349,7 +338,7 @@ void dup_x2()
 
 
 
-void dup2_x1()
+static void dup2_x1()
 {
     // If the stack top is category 2 and the next element is category 1, this
     // code still works, right? I believe that everything should work just
@@ -383,7 +372,7 @@ void dup2_x1()
 
 
 
-void dup2_x2()
+static void dup2_x2()
 {
     // From the Java instruction set documentation:
     //
@@ -483,7 +472,7 @@ void multi_array_build(Array* parent,
 
 
 // Extract the nested typename from a multidimensional array type descriptor.
-Slice multi_nested_typename(Slice type_descriptor)
+static Slice multi_nested_typename(Slice type_descriptor)
 {
     int i = 0;
     while (type_descriptor.ptr_[i] == '[') {
@@ -503,7 +492,7 @@ Slice multi_nested_typename(Slice type_descriptor)
 
 
 
-void swap()
+static void swap()
 {
     std::swap(__operand_stack[__operand_stack.size() - 1],
               __operand_stack[__operand_stack.size() - 2]);
@@ -514,7 +503,7 @@ void swap()
 
 
 
-void pop_operand()
+static void pop_operand()
 {
     __operand_stack.pop_back();
     __operand_types.pop_back();
@@ -731,11 +720,11 @@ struct Bytecode {
 
 
 
-void invoke_static_block(Class* clz);
+static void invoke_static_block(Class* clz);
 
 
 
-Class* import_class(Slice classpath, const char* classfile_data)
+static Class* import_class(Slice classpath, const char* classfile_data)
 {
     if (auto clz = parse_classfile(classpath, classfile_data)) {
         invoke_static_block(clz);
@@ -777,13 +766,14 @@ using Exception = Object;
 
 
 
-Exception* execute_bytecode(Class* clz,
-                            const u8* bytecode,
-                            const ClassFile::ExceptionTable* exception_table);
+static Exception*
+execute_bytecode(Class* clz,
+                 const u8* bytecode,
+                 const ClassFile::ExceptionTable* exception_table);
 
 
 
-void pop_arguments(const ArgumentInfo& argc)
+static void pop_arguments(const ArgumentInfo& argc)
 {
     for (int i = 0; i < argc.operand_count_; ++i) {
         pop_operand();
@@ -794,9 +784,9 @@ void pop_arguments(const ArgumentInfo& argc)
 
 // Move arguments from the operand stack into local variable slots in the stack
 // frame.
-void bind_arguments(Object* self,
-                    const ArgumentInfo& argc,
-                    Slice type_signature)
+static void bind_arguments(Object* self,
+                           const ArgumentInfo& argc,
+                           Slice type_signature)
 {
     int local_param_index = 0;
     int stack_load_index = argc.operand_count_ - 1;
@@ -882,15 +872,16 @@ void bind_arguments(Object* self,
 
 
 
+static Exception* make_exception(const char* classpath, const char* error);
 Exception* TODO_throw_proper_exception();
 
 
 
-Exception* invoke_method(Class* clz,
-                         Object* self,
-                         const ClassFile::MethodInfo* method,
-                         const ArgumentInfo& argc = ArgumentInfo{},
-                         Slice type_signature = Slice(nullptr, 0))
+static Exception* invoke_method(Class* clz,
+                                Object* self,
+                                const ClassFile::MethodInfo* method,
+                                const ArgumentInfo& argc = ArgumentInfo{},
+                                Slice type_signature = Slice(nullptr, 0))
 {
     for (int i = 0; i < method->attributes_count_.get(); ++i) {
         auto attr = (ClassFile::AttributeInfo*)((const char*)method +
@@ -938,12 +929,13 @@ Exception* invoke_method(Class* clz,
         }
     }
 
-    return TODO_throw_proper_exception();
+    return make_exception("java/lang/RuntimeException",
+                          "failed to invoke method");
 }
 
 
 
-Class* load_class_by_name(Slice class_name)
+static Class* load_class_by_name(Slice class_name)
 {
     if (auto entry = classtable::load(class_name)) {
         return entry;
@@ -958,7 +950,7 @@ Class* load_class_by_name(Slice class_name)
 
 
 
-Slice classname(Class* current_module, u16 class_index)
+static Slice classname(Class* current_module, u16 class_index)
 {
     auto c_clz =
         (const ClassFile::ConstantClass*)current_module->constants_->load(
@@ -979,7 +971,7 @@ Class* load_class(Class* current_module, u16 class_index)
 
 
 
-std::pair<const ClassFile::MethodInfo*, Class*>
+static std::pair<const ClassFile::MethodInfo*, Class*>
 lookup_method(Class* clz, Slice lhs_name, Slice lhs_type)
 {
     if (auto mtd = clz->load_method(lhs_name, lhs_type)) {
@@ -987,7 +979,6 @@ lookup_method(Class* clz, Slice lhs_name, Slice lhs_type)
     }
 
     if (clz->super_ == nullptr) {
-        puts("method lookup failed");
         return {nullptr, clz};
     } else {
         return lookup_method(clz->super_, lhs_name, lhs_type);
@@ -1021,7 +1012,7 @@ static Exception* dispatch_method(Class* clz,
                 pop_operand();
             }
 
-            return TODO_throw_proper_exception();
+            return make_exception("java/lang/NullPointerException", "");
         }
     }
 
@@ -1046,8 +1037,8 @@ static Exception* dispatch_method(Class* clz,
         }
         return invoke_method(mtd.second, self, mtd.first, argc, method_type);
     } else {
-        puts("missing method");
-        return TODO_throw_proper_exception();
+        return make_exception("java/lang/RuntimeException",
+                              "method lookup failed");
     }
 }
 
@@ -1074,18 +1065,16 @@ static Exception* dispatch_method(Class* clz,
 
 
 
-Exception* invoke_special(Class* clz, u16 method_index)
+static Exception* invoke_special(Class* clz, u16 method_index)
 {
     return dispatch_method(clz, method_index, true, true);
 }
 
 
 
-Object* make_instance_impl(Class* clz)
+static Object* make_instance_impl(Class* clz)
 {
     const auto instance_size = clz->instance_size();
-
-    // printf("instance size %ld\n", fields_size);
 
     auto mem = (Object*)heap::allocate(instance_size);
     if (mem == nullptr) {
@@ -1097,7 +1086,7 @@ Object* make_instance_impl(Class* clz)
 
 
 
-Object* clone(Object* self)
+static Object* clone(Object* self)
 {
     if (self->class_ == &reference_array_class or
         self->class_ == &primitive_array_class) {
@@ -1129,7 +1118,7 @@ Object* clone(Object* self)
 
 
 
-Object* make_instance(Class* current_module, u16 class_constant)
+static Object* make_instance(Class* current_module, u16 class_constant)
 {
     auto clz = load_class(current_module, class_constant);
 
@@ -1137,8 +1126,6 @@ Object* make_instance(Class* current_module, u16 class_constant)
         return make_instance_impl(clz);
     }
 
-    // TODO: fatal error...
-    puts("warning! failed to alloc class!");
     return nullptr;
 }
 
@@ -1152,7 +1139,7 @@ Exception* TODO_throw_proper_exception()
 
 
 
-Object* make_string(Slice data)
+static Object* make_string(Slice data)
 {
     // We want to create a char array, and invoke the String(char[])
     // constructor with the array. In this way, the entire string class can
@@ -1205,13 +1192,12 @@ Object* make_string(Slice data)
 
 
 
-// TODO: This make_exception code isn't used yet, test it...
-Exception* make_exception(const char* classpath, const char* error)
+static Exception* make_exception(const char* classpath, const char* error)
 {
     push_operand_a(*(Object*)make_string(Slice::from_c_str(error)));
-    auto clz = ((Object*)load_operand(0))->class_;
     push_operand_a(
         *make_instance_impl(load_class_by_name(Slice::from_c_str(classpath))));
+    auto clz = ((Object*)load_operand(0))->class_;
     dup_x1();
     swap();
 
@@ -1238,7 +1224,7 @@ Exception* make_exception(const char* classpath, const char* error)
 
 
 
-void ldc1(Class* clz, u16 index)
+static void ldc1(Class* clz, u16 index)
 {
     auto c = clz->constants_->load(index);
     switch (c->tag_) {
@@ -1279,7 +1265,7 @@ static void __push_double_from_aligned_bytevector(void* d)
 
 
 
-void ldc2(Class* clz, u16 index)
+static void ldc2(Class* clz, u16 index)
 {
     auto c = clz->constants_->load(index);
     switch (c->tag_) {
@@ -1304,7 +1290,7 @@ void ldc2(Class* clz, u16 index)
 
 
 
-bool primitive_array_type_compare(Array* array, Slice typedescriptor)
+static bool primitive_array_type_compare(Array* array, Slice typedescriptor)
 {
     if (typedescriptor.length_ == 2) {
         if (typedescriptor.ptr_[0] not_eq '[') {
@@ -1338,7 +1324,7 @@ bool primitive_array_type_compare(Array* array, Slice typedescriptor)
 
 
 
-bool reference_array_type_compare(Array* array, Slice typedescriptor)
+static bool reference_array_type_compare(Array* array, Slice typedescriptor)
 {
     [[maybe_unused]] auto c = array->metadata_.class_type_;
 
@@ -1429,7 +1415,7 @@ bool instanceof (Object * obj, Class* clz)
 
 
 
-const ClassFile::ExceptionTableEntry*
+static const ClassFile::ExceptionTableEntry*
 find_exception_handler(Class* clz,
                        Object* exception,
                        u32 pc,
@@ -1455,10 +1441,10 @@ find_exception_handler(Class* clz,
 
 
 
-bool handle_exception(Class* clz,
-                      Exception* exn,
-                      u32& pc,
-                      const ClassFile::ExceptionTable* exception_table)
+static bool handle_exception(Class* clz,
+                             Exception* exn,
+                             u32& pc,
+                             const ClassFile::ExceptionTable* exception_table)
 {
     auto handler = find_exception_handler(clz, exn, pc, exception_table);
     if (handler) {
@@ -1476,7 +1462,7 @@ bool handle_exception(Class* clz,
 
 
 
-void make_invokedynamic_callsite(Class* clz, int bootstrap_method_index)
+static void make_invokedynamic_callsite(Class* clz, int bootstrap_method_index)
 {
     auto opt = (Class::OptionBootstrapMethodInfo*)clz->load_option(
         Class::Option::Type::bootstrap_methods);
@@ -1515,17 +1501,45 @@ static inline s64 arithmetic_right_shift_64(s64 value, s64 amount)
 
 
 
-Exception* execute_bytecode(Class* clz,
-                            const u8* bytecode,
-                            const ClassFile::ExceptionTable* exception_table)
+static void array_index_exn_msg(int index, char buffer[80])
 {
-#define JVM_THROW_EXN()                                                        \
-    push_operand_a(*(Object*)TODO_throw_proper_exception());                   \
+    snprintf(buffer, 80, "Array index out of range %d", index);
+}
+
+
+
+[[noreturn]]
+static void invalid_bytecode_instruction(u8 instruction, int pc)
+{
+    char buffer[80];
+
+    snprintf(buffer,
+             sizeof buffer,
+             "unrecognized bytecode instruction %#02x at %d\n",
+             instruction,
+             pc);
+
+    unhandled_error(buffer);
+}
+
+
+
+static Exception* execute_bytecode(Class* clz,
+                                   const u8* bytecode,
+                                   const ClassFile::ExceptionTable* exception_table)
+{
+#define JVM_THROW_EXN(CPATH, MSG)                                       \
+    push_operand_a(*make_exception(CPATH, MSG));                        \
     goto THROW;
 
-#define JVM_THROW_SPECIFIC(CPATH, MSG)                                         \
-    push_operand_a(*make_exception(CPATH, MSG));                               \
-    goto THROW;
+#define JVM_ARRAY_INDEX_EXCEPTION(INDEX)                                \
+    {                                                                   \
+        char buffer[80];                                                \
+        array_index_exn_msg((INDEX), buffer);                           \
+        JVM_THROW_EXN("java/lang/ArrayIndexOutOfBoundsException",       \
+                      buffer);                                          \
+    }
+
 
 
     u32 pc = 0;
@@ -1784,7 +1798,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand_a(*result);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -1810,7 +1824,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -1851,7 +1865,8 @@ Exception* execute_bytecode(Class* clz,
                 push_operand_a(*obj);
                 pc += 3;
             } else {
-                JVM_THROW_EXN();
+                JVM_THROW_EXN("java/lang/ClassCastException",
+                              "Bad cast");
             }
             break;
         }
@@ -1962,8 +1977,8 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (arg == nullptr) {
-                JVM_THROW_SPECIFIC("java/lang/NullPointerException",
-                                   "Access to field in null object");
+                JVM_THROW_EXN("java/lang/NullPointerException",
+                              "Access to field in null object");
             }
 
             auto c =
@@ -2023,7 +2038,8 @@ Exception* execute_bytecode(Class* clz,
                 pop_operand();
 
                 if (obj == nullptr) {
-                    JVM_THROW_EXN();
+                    JVM_THROW_EXN("java/lang/NullPointerException",
+                                  "Access to field in null object");
                 }
 
                 auto c = clz->constants_->load(
@@ -2034,7 +2050,7 @@ Exception* execute_bytecode(Class* clz,
                 u8* obj_ram = obj->data();
 
                 if (sub->size_ not_eq SubstitutionField::Size::b8) {
-                    JVM_THROW_EXN();
+                    unhandled_error("VM logic error");
                 }
 
                 memcpy(obj_ram + sub->offset_, &value, sizeof(value));
@@ -2047,7 +2063,7 @@ Exception* execute_bytecode(Class* clz,
                 pop_operand();
 
                 if (obj == nullptr) {
-                    JVM_THROW_EXN();
+                    return make_exception("java/lang/NullPointerException", "");
                 }
 
                 auto c = clz->constants_->load(
@@ -2079,7 +2095,7 @@ Exception* execute_bytecode(Class* clz,
                     }
 
                     case 8: {
-                        JVM_THROW_EXN();
+                        unhandled_error("VM logic error");
                     }
                     }
                 }
@@ -2224,7 +2240,8 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (divisor == 0) {
-                JVM_THROW_EXN();
+                JVM_THROW_EXN("java/lang/ArithmeticException",
+                              "division by zero");
             }
             const s32 result = value / divisor;
 
@@ -2816,7 +2833,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_wide_operand_d(result);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -2839,7 +2856,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -2957,7 +2974,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_wide_operand_l(result);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -2980,7 +2997,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -3006,7 +3023,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand_i(result);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -3032,7 +3049,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -3193,7 +3210,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 *array->address(index) = value;
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -3215,7 +3232,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 *array->address(index) = value;
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -3236,7 +3253,7 @@ Exception* execute_bytecode(Class* clz,
                 u8 value = *array->address(index);
                 push_operand_i(value);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -3257,7 +3274,7 @@ Exception* execute_bytecode(Class* clz,
                 s8 value = *array->address(index);
                 push_operand_i(value);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -3284,7 +3301,7 @@ Exception* execute_bytecode(Class* clz,
             if (array->check_bounds(index)) {
                 memcpy(array->address(index), &value, sizeof value);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -3311,7 +3328,7 @@ Exception* execute_bytecode(Class* clz,
                 memcpy(&result, array->address(index), sizeof result);
                 push_operand_i(result);
             } else {
-                JVM_THROW_EXN();
+                JVM_ARRAY_INDEX_EXCEPTION(index);
             }
             ++pc;
             break;
@@ -3482,7 +3499,8 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (rhs == 0) {
-                JVM_THROW_EXN();
+                JVM_THROW_EXN("java/lang/ArithmeticException",
+                              "division by zero");
             }
 
             push_wide_operand_l(lhs / rhs);
@@ -3721,12 +3739,7 @@ Exception* execute_bytecode(Class* clz,
             break;
 
         default:
-            printf("unrecognized bytecode instruction %#02x\n", bytecode[pc]);
-            for (int i = 0; i < 10; ++i) {
-                std::cout << (int)bytecode[i] << std::endl;
-            }
-            while (true)
-                ;
+            invalid_bytecode_instruction(bytecode[pc], pc);
         }
     }
 }
@@ -3743,7 +3756,7 @@ INCBIN(lang_jar, PROJECT_ROOT "src/Lang.jar");
 
 
 
-void invoke_static_block(Class* clz)
+static void invoke_static_block(Class* clz)
 {
     const auto name = Slice::from_c_str("<clinit>");
     const auto signature = Slice::from_c_str("()V");
@@ -3761,7 +3774,7 @@ void invoke_static_block(Class* clz)
 
 
 
-void bootstrap()
+static void bootstrap()
 {
     bind_jar((const char*)lang_jar_data);
 
@@ -3827,9 +3840,9 @@ void bootstrap()
 
 
 
-void method_call_easy_noarg(Object* self,
-                            const char* method_name,
-                            const char* typeinfo)
+static void method_call_easy_noarg(Object* self,
+                                   const char* method_name,
+                                   const char* typeinfo)
 {
     push_operand_a(*self);
     auto exn = dispatch_method(self->class_,
@@ -3846,7 +3859,7 @@ void method_call_easy_noarg(Object* self,
 
 
 
-int start(Class* entry_point)
+static int start(Class* entry_point)
 {
     const auto type_signature = Slice::from_c_str("([Ljava/lang/String;)V");
 
@@ -3860,31 +3873,23 @@ int start(Class* entry_point)
         argc.argument_count_ = 1;
         argc.operand_count_ = 1;
 
-        using namespace std::chrono;
-        auto start = high_resolution_clock::now();
         auto exn = java::jvm::invoke_method(
             entry_point, nullptr, entry, argc, type_signature);
-        auto end = high_resolution_clock::now();
-        std::cout
-            << std::chrono::duration_cast<nanoseconds>(end - start).count()
-            << std::endl;
-
-        heap::print_stats([](const char* str) { printf("%s", str); });
 
         if (exn) {
             auto cname = classtable::name(exn->class_);
 
             method_call_easy_noarg(exn, "getMessage", "()Ljava/lang/String;");
+
             if (load_operand(0)) {
                 method_call_easy_noarg(
                     (Object*)load_operand(0), "toCharArray", "()[C");
+
                 auto error_msg = (Array*)load_operand(0);
-                std::cout
-                    << "program terminated after throwing exception of class "
-                    << std::string(cname.ptr_, cname.length_) << ", message: "
-                    << std::string((const char*)error_msg->data(),
-                                   error_msg->size_)
-                    << std::endl;
+
+                uncaught_exception(cname,
+                                   Slice((const char*)error_msg->data(),
+                                         error_msg->size_));
             }
 
             return 1;
@@ -3907,7 +3912,6 @@ int start_from_jar(const char* jar_file_bytes, Slice classpath)
     if (auto clz = java::jvm::import(classpath)) {
         return start(clz);
     } else {
-        puts("failed to import main class");
         return 1;
     }
 }
@@ -3922,7 +3926,6 @@ int start_from_classfile(const char* class_file_bytes, Slice classpath)
         invoke_static_block(clz);
         return start(clz);
     } else {
-        puts("failed to import main class");
         return 1;
     }
 }
@@ -3934,38 +3937,3 @@ int start_from_classfile(const char* class_file_bytes, Slice classpath)
 
 
 } // namespace java
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-
-
-#include <string>
-#include <fstream>
-#include <streambuf>
-
-
-int main(int argc, char** argv)
-{
-    if (argc != 3) {
-        puts("usage: java <jar|classfile> <classpath>");
-        return 1;
-    }
-
-    std::string fname(argv[1]);
-
-    std::ifstream t(fname);
-    std::string str((std::istreambuf_iterator<char>(t)),
-                    std::istreambuf_iterator<char>());
-
-    const auto classpath = java::Slice::from_c_str(argv[2]);
-
-    if (fname.substr(fname.find_last_of(".") + 1) == "jar") {
-        return java::jvm::start_from_jar(str.c_str(), classpath);
-    } else {
-        return java::jvm::start_from_classfile(str.c_str(), classpath);
-    }
-
-    return 0;
-}

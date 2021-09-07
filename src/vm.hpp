@@ -3,15 +3,12 @@
 #include "buffer.hpp"
 #include "class.hpp"
 #include "slice.hpp"
+#include "java.hpp"
 
 
 
 namespace java {
 namespace jvm {
-
-
-
-[[noreturn]] void unhandled_error(const char* description);
 
 
 
@@ -51,8 +48,8 @@ LocalTypes& local_types();
 
 
 
-// Start the VM, passing in a pointer to jar file contents.
-void start(const u8* jar_file_bytes);
+int start_from_classfile(const char* class_file_bytes, Slice classpath);
+int start_from_jar(const char* jar_file_bytes, Slice classpath);
 
 
 

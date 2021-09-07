@@ -1,7 +1,7 @@
 package java.lang;
 
 
-class Exception extends Throwable {
+public class Exception extends Throwable {
 
 
     Exception()

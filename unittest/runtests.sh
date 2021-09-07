@@ -1,10 +1,7 @@
 
 javac *.java
-mv *.class pkg/test/
-cd pkg
-zip -0 -r Test.jar ./*
-mv Test.jar ../
-cd ..
+mv *.class test/
+jar cf0 Test.jar test
 
 
 for i in *.java; do

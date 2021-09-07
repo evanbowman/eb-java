@@ -1,8 +1,8 @@
 #pragma once
 
+#include "java.hpp"
 #include "endian.hpp"
 #include "slice.hpp"
-#include <stdio.h>
 
 
 
@@ -219,7 +219,7 @@ struct ClassFile {
     {
         switch (hdr->tag_) {
         default:
-            printf("error, constant %d\n", hdr->tag_);
+            unhandled_error("invalid constant tag");
             while (true)
                 ;
             break;

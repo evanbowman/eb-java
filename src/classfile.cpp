@@ -2,7 +2,6 @@
 #include "class.hpp"
 #include "memory.hpp"
 #include "vm.hpp"
-#include <iostream>
 
 
 
@@ -46,13 +45,13 @@ std::pair<SubstitutionField::Size, bool> get_field_size(Slice field_type)
         } else if (sizeof(Object*) == 8) {
             field_size = SubstitutionField::b8;
         } else {
-            jvm::unhandled_error("unsupported architecture");
+            unhandled_error("unsupported architecture");
         }
 
         is_object = true;
 
     } else {
-        jvm::unhandled_error("invalid field size");
+        unhandled_error("invalid field size");
     }
     return {field_size, is_object};
 }
@@ -212,7 +211,6 @@ SubstitutionField link_field(Class* current, const ClassFile::ConstantRef& ref)
         }
     }
 
-    puts("failed to link field"); // TODO: not a real error for static fields
     return {};
 }
 
@@ -284,7 +282,7 @@ const char* parse_classfile_fields(const char* str,
                 if (field.valid_) {
 
                     if (field.offset_ > 2047) {
-                        jvm::unhandled_error("field offset exceeds maximum");
+                        unhandled_error("field offset exceeds maximum");
                     }
 
                     clz->constants_->bind_field(i + 1, field);
@@ -353,7 +351,7 @@ Class* parse_classfile(Slice classname, const char* str)
     auto clz = jvm::classmemory::allocate<Class>();
 
     if (not clz) {
-        jvm::unhandled_error("failed to alloc classmemory");
+        unhandled_error("failed to alloc classmemory");
     }
 
     new (clz) Class();

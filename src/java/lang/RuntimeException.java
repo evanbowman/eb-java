@@ -1,12 +1,11 @@
 package java.lang;
 
 
-class RuntimeException extends Exception {
+public class RuntimeException extends Exception {
 
 
     RuntimeException()
     {
-
     }
 
 
