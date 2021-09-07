@@ -23,6 +23,11 @@ void visit(void (*visitor)(Class*));
 
 
 
+// NOTE: may be very slow.
+Slice name(Class* clz);
+
+
+
 } // namespace classtable
 } // namespace jvm
 } // namespace java

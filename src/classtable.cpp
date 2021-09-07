@@ -78,6 +78,22 @@ void visit(void (*visitor)(Class*))
 
 
 
+Slice name(Class* clz)
+{
+    for (auto row : class_table) {
+        while (row) {
+            if (row->class_ == clz) {
+                return row->name_;
+            }
+            row = row->next_;
+        }
+    }
+
+    return Slice{};
+}
+
+
+
 } // namespace classtable
 } // namespace jvm
 } // namespace java

@@ -469,10 +469,12 @@ void multi_array_build(Array* parent,
             if (nested == nullptr) {
                 unhandled_error("oom");
             }
-            memcpy(parent->data() + i * sizeof(Array*), &nested, sizeof(Array*));
+            memcpy(
+                parent->data() + i * sizeof(Array*), &nested, sizeof(Array*));
         } else {
             Array* nested;
-            memcpy(&nested, parent->data() + i * sizeof(Array*), sizeof(nested));
+            memcpy(
+                &nested, parent->data() + i * sizeof(Array*), sizeof(nested));
             multi_array_build(nested, depth + 1, dim, dimensions, create_array);
         }
     }
@@ -995,21 +997,13 @@ lookup_method(Class* clz, Slice lhs_name, Slice lhs_type)
 
 
 static Exception* dispatch_method(Class* clz,
-                                  u16 method_index,
+                                  Slice method_name,
+                                  Slice method_type,
                                   bool direct_dispatch,
-                                  bool special)
+                                  bool special,
+                                  const ClassFile::ConstantRef* ref)
 {
-
-    auto ref =
-        (const ClassFile::ConstantRef*)clz->constants_->load(method_index);
-
-    auto nt = (const ClassFile::ConstantNameAndType*)clz->constants_->load(
-        ref->name_and_type_index_.get());
-
-    auto lhs_name = clz->constants_->load_string(nt->name_index_.get());
-    auto lhs_type = clz->constants_->load_string(nt->descriptor_index_.get());
-
-    auto argc = parse_arguments(lhs_type);
+    auto argc = parse_arguments(method_type);
 
     Object* self = nullptr;
     if ((not direct_dispatch) or special) {
@@ -1033,7 +1027,7 @@ static Exception* dispatch_method(Class* clz,
 
     auto mtd = [&] {
         if (not direct_dispatch) {
-            return lookup_method(self->class_, lhs_name, lhs_type);
+            return lookup_method(self->class_, method_name, method_type);
         } else {
             // If we do not have a self pointer we're looking up a static
             // method, if direct_dispatch, we're processing an invoke_special
@@ -1042,7 +1036,7 @@ static Exception* dispatch_method(Class* clz,
             if (t_clz == nullptr) {
                 unhandled_error("failed to load class, TODO: raise error");
             }
-            return lookup_method(t_clz, lhs_name, lhs_type);
+            return lookup_method(t_clz, method_name, method_type);
         }
     }();
 
@@ -1050,11 +1044,32 @@ static Exception* dispatch_method(Class* clz,
         if (self) {
             argc.operand_count_ += 1;
         }
-        return invoke_method(mtd.second, self, mtd.first, argc, lhs_type);
+        return invoke_method(mtd.second, self, mtd.first, argc, method_type);
     } else {
         puts("missing method");
         return TODO_throw_proper_exception();
     }
+}
+
+
+
+static Exception* dispatch_method(Class* clz,
+                                  u16 method_index,
+                                  bool direct_dispatch,
+                                  bool special)
+{
+
+    auto ref =
+        (const ClassFile::ConstantRef*)clz->constants_->load(method_index);
+
+    auto nt = (const ClassFile::ConstantNameAndType*)clz->constants_->load(
+        ref->name_and_type_index_.get());
+
+    auto lhs_name = clz->constants_->load_string(nt->name_index_.get());
+    auto lhs_type = clz->constants_->load_string(nt->descriptor_index_.get());
+
+    return dispatch_method(
+        clz, lhs_name, lhs_type, direct_dispatch, special, ref);
 }
 
 
@@ -1173,11 +1188,8 @@ Object* make_string(Slice data)
         ArgumentInfo argc;
         argc.argument_count_ = 2;
         argc.operand_count_ = 2;
-        auto exn = invoke_method(string_class,
-                                 (Object*)load_operand(1),
-                                 mtd,
-                                 argc,
-                                 ctor_typeinfo);
+        auto exn = invoke_method(
+            string_class, (Object*)load_operand(1), mtd, argc, ctor_typeinfo);
         if (exn) {
             unhandled_error("exception from String(char[])");
         }
@@ -1198,21 +1210,19 @@ Exception* make_exception(const char* classpath, const char* error)
 {
     push_operand_a(*(Object*)make_string(Slice::from_c_str(error)));
     auto clz = ((Object*)load_operand(0))->class_;
-    push_operand_a(*make_instance_impl(load_class_by_name(Slice::from_c_str(classpath))));
+    push_operand_a(
+        *make_instance_impl(load_class_by_name(Slice::from_c_str(classpath))));
     dup_x1();
     swap();
 
     auto ctor_typeinfo = Slice::from_c_str("(Ljava/lang/String;)V");
-    if (auto mtd = clz->load_method(Slice::from_c_str("<init>"),
-                                    ctor_typeinfo)) {
+    if (auto mtd =
+            clz->load_method(Slice::from_c_str("<init>"), ctor_typeinfo)) {
         ArgumentInfo argc;
         argc.argument_count_ = 2;
         argc.operand_count_ = 2;
-        auto exn = invoke_method(clz,
-                                 (Object*)load_operand(1),
-                                 mtd,
-                                 argc,
-                                 ctor_typeinfo);
+        auto exn = invoke_method(
+            clz, (Object*)load_operand(1), mtd, argc, ctor_typeinfo);
         if (exn) {
             unhandled_error("exception while constructing exception!?");
         }
@@ -1513,11 +1523,15 @@ Exception* execute_bytecode(Class* clz,
     push_operand_a(*(Object*)TODO_throw_proper_exception());                   \
     goto THROW;
 
+#define JVM_THROW_SPECIFIC(CPATH, MSG)                                         \
+    push_operand_a(*make_exception(CPATH, MSG));                               \
+    goto THROW;
+
 
     u32 pc = 0;
 
     while (true) {
-        // printf("%d %d\n", pc, bytecode[pc]);
+        // printf("%d %x\n", pc, bytecode[pc]);
         switch (bytecode[pc]) {
         case Bytecode::nop:
             ++pc;
@@ -1948,7 +1962,8 @@ Exception* execute_bytecode(Class* clz,
             pop_operand();
 
             if (arg == nullptr) {
-                JVM_THROW_EXN();
+                JVM_THROW_SPECIFIC("java/lang/NullPointerException",
+                                   "Access to field in null object");
             }
 
             auto c =
@@ -3157,7 +3172,7 @@ Exception* execute_bytecode(Class* clz,
             store_local(bytecode[pc + 1],
                         (void*)(intptr_t)(
                             (int)(intptr_t)(load_local(bytecode[pc + 1])) +
-                            bytecode[pc + 2]),
+                            (s8)bytecode[pc + 2]),
                         OperandTypeCategory::primitive);
             pc += 3;
             break;
@@ -3812,6 +3827,25 @@ void bootstrap()
 
 
 
+void method_call_easy_noarg(Object* self,
+                            const char* method_name,
+                            const char* typeinfo)
+{
+    push_operand_a(*self);
+    auto exn = dispatch_method(self->class_,
+                               Slice::from_c_str(method_name),
+                               Slice::from_c_str(typeinfo),
+                               false,
+                               false,
+                               nullptr);
+
+    if (exn) {
+        unhandled_error("failed to load method from class");
+    }
+}
+
+
+
 int start(Class* entry_point)
 {
     const auto type_signature = Slice::from_c_str("([Ljava/lang/String;)V");
@@ -3838,7 +3872,21 @@ int start(Class* entry_point)
         heap::print_stats([](const char* str) { printf("%s", str); });
 
         if (exn) {
-            puts("uncaught exception from main method");
+            auto cname = classtable::name(exn->class_);
+
+            method_call_easy_noarg(exn, "getMessage", "()Ljava/lang/String;");
+            if (load_operand(0)) {
+                method_call_easy_noarg(
+                    (Object*)load_operand(0), "toCharArray", "()[C");
+                auto error_msg = (Array*)load_operand(0);
+                std::cout
+                    << "program terminated after throwing exception of class "
+                    << std::string(cname.ptr_, cname.length_) << ", message: "
+                    << std::string((const char*)error_msg->data(),
+                                   error_msg->size_)
+                    << std::endl;
+            }
+
             return 1;
         }
 
