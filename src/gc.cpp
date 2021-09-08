@@ -165,7 +165,7 @@ void mark()
         }
     }
 
-    classtable::visit([](Class* clz) {
+    classtable::visit([](Slice, Class* clz, void*) {
         auto opts = clz->options_;
 
         while (opts) {
@@ -180,7 +180,7 @@ void mark()
 
             opts = opts->next_;
         }
-    });
+    }, nullptr);
 }
 
 
@@ -242,7 +242,7 @@ void resolve_forwarding_pointers()
     }
 
     // Resolve addresses in static variables
-    classtable::visit([](Class* clz) {
+    classtable::visit([](Slice, Class* clz, void*) {
         auto opts = clz->options_;
 
         while (opts) {
@@ -258,7 +258,7 @@ void resolve_forwarding_pointers()
 
             opts = opts->next_;
         }
-    });
+    }, nullptr);
 
     // Now, scan the heap, and fix internal pointers to other objects...
     {

@@ -1,5 +1,6 @@
 #include "vm.hpp"
 #include "memory.hpp"
+#include "jdwp.hpp"
 
 
 #include <iostream>
@@ -42,8 +43,8 @@ void uncaught_exception(Slice cname,
 
 int main(int argc, char** argv)
 {
-    if (argc != 3) {
-        puts("usage: eb-java <jar|classfile> <classpath>");
+    if (argc < 3) {
+        puts("usage: eb-java <jar|classfile> <classpath> [-XDebug=<port>]");
         return 1;
     }
 

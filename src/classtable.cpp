@@ -1,12 +1,7 @@
 #include "classtable.hpp"
 #include "crc32.hpp"
 #include "memory.hpp"
-
-
-
-#ifndef CLASSTABLE_SIZE
-#define CLASSTABLE_SIZE 128
-#endif
+#include "defines.hpp"
 
 
 
@@ -65,11 +60,11 @@ Class* load(Slice name)
 
 
 
-void visit(void (*visitor)(Class*))
+void visit(void (*visitor)(Slice, Class*, void*), void* arg)
 {
     for (auto row : class_table) {
         while (row) {
-            visitor(row->class_);
+            visitor(row->name_, row->class_, arg);
             row = row->next_;
         }
     }
@@ -89,6 +84,20 @@ Slice name(Class* clz)
     }
 
     return Slice{};
+}
+
+
+
+int size()
+{
+    int i = 0;
+    for (auto row : class_table) {
+        while (row) {
+            ++i;
+            row = row->next_;
+        }
+    }
+    return i;
 }
 
 

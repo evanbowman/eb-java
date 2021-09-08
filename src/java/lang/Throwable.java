@@ -1,15 +1,36 @@
 package java.lang;
 
 
+
 public class Throwable {
+
+
+    public static boolean enableStackTraces = false;
 
 
     private String message = null;
     private Throwable cause = null;
+    private StackTraceElement[] stackTrace = null;
 
 
     public Throwable()
     {
+        if (enableStackTraces) {
+            fillInStackTrace();
+        }
+    }
+
+
+    public Throwable fillInStackTrace()
+    {
+        stackTrace = Runtime.getRuntime().stackTrace();
+        return this;
+    }
+
+
+    public StackTraceElement[] getStackTrace()
+    {
+        return stackTrace;
     }
 
 

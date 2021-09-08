@@ -19,12 +19,17 @@ Class* load(Slice name);
 
 
 
-void visit(void (*visitor)(Class*));
+void visit(void (*visitor)(Slice, Class*, void*),
+           void* arg);
 
 
 
 // NOTE: may be very slow.
 Slice name(Class* clz);
+
+
+
+int size();
 
 
 

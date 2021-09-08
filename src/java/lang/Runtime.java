@@ -34,6 +34,9 @@ public class Runtime {
     public native long freeMemory();
 
 
+    public native StackTraceElement[] stackTrace();
+
+
     public void halt(int code)
     {
         exit(code);

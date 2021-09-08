@@ -44,6 +44,40 @@ const ClassFile::HeaderSection2* Class::interfaces() const
 
 
 
+void Class::visit_methods(void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
+                          void* arg)
+{
+    if (not(flags_ & Flag::has_method_table)) {
+        // We can run without a method table, by searching the raw classfile.
+
+        auto methods = (const ClassFile::HeaderSection4*)methods_;
+
+        const auto method_count = methods->methods_count_.get();
+
+        const char* str = (const char*)methods;
+        str += sizeof(ClassFile::HeaderSection4);
+
+        for (int i = 0; i < method_count; ++i) {
+            auto method = (const ClassFile::MethodInfo*)str;
+
+            visitor(this, method, arg);
+
+            str += sizeof(ClassFile::MethodInfo);
+            for (int i = 0; i < method->attributes_count_.get(); ++i) {
+                auto attr = (ClassFile::AttributeInfo*)str;
+                str += sizeof(ClassFile::AttributeInfo) +
+                       attr->attribute_length_.get();
+            }
+        }
+    } else {
+        auto method_table = (MethodTable*)methods_;
+        method_table->visit_methods(this, visitor, arg);
+    }
+}
+
+
+
+
 const ClassFile::MethodInfo* Class::load_method(Slice method_name,
                                                 Slice type_signature)
 {

@@ -118,5 +118,16 @@ void MethodTableImpl::bind_native_method(Class* clz,
 }
 
 
+void MethodTableImpl::visit_methods(Class* clz,
+                                    void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
+                                    void* arg)
+{
+    for (int i = 0; i < method_count_; ++i) {
+        visitor(clz, methods_[i], arg);
+    }
+}
+
+
+
 
 } // namespace java

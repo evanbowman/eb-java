@@ -3,12 +3,7 @@
 
 #include "classfile.hpp"
 #include "jni.hpp"
-
-
-
-#ifndef JVM_METHOD_CACHE_SIZE
-#define JVM_METHOD_CACHE_SIZE 8
-#endif
+#include "defines.hpp"
 
 
 
@@ -33,6 +28,11 @@ public:
                                     Slice method_name,
                                     Slice type_signature,
                                     jni::MethodStub* stub) = 0;
+
+
+    virtual void visit_methods(Class *clz,
+                               void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
+                               void* arg) = 0;
 };
 
 
@@ -50,6 +50,12 @@ public:
                             Slice method_name,
                             Slice type_signature,
                             jni::MethodStub* stub) override;
+
+
+    void visit_methods(Class* clz,
+                       void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
+                       void* arg) override;
+
 
 private:
     const ClassFile::MethodInfo** methods_ = nullptr;

@@ -5,12 +5,6 @@
 
 
 
-#ifndef JVM_HEAP_SIZE
-#define JVM_HEAP_SIZE 256000
-#endif
-
-
-
 namespace java {
 namespace jvm {
 namespace heap {

@@ -4,22 +4,12 @@
 #include "class.hpp"
 #include "slice.hpp"
 #include "java.hpp"
+#include "defines.hpp"
 
 
 
 namespace java {
 namespace jvm {
-
-
-
-#ifndef JVM_OPERAND_STACK_SIZE
-#define JVM_OPERAND_STACK_SIZE 512
-#endif
-
-
-#ifndef JVM_STACK_LOCALS_SIZE
-#define JVM_STACK_LOCALS_SIZE 1024
-#endif
 
 
 
@@ -58,6 +48,7 @@ void register_class(Slice name, Class* clz);
 
 
 Class* load_class(Class* current_module, u16 class_index);
+Class* load_class_by_name(Slice class_name);
 
 
 

@@ -15,6 +15,7 @@
 #include "incbin.h"
 #include "memory.hpp"
 #include <math.h>
+#include "jdwp.hpp"
 // #include <iostream>
 
 
@@ -94,6 +95,13 @@ static LocalTypes __local_types;
 
 
 
+#if JVM_USE_CALLSTACK
+using CallstackInfo = std::pair<Class*, const ClassFile::MethodInfo*>;
+static Buffer<CallstackInfo, 64> callstack;
+#endif
+
+
+
 Locals& locals()
 {
     return __locals;
@@ -169,6 +177,12 @@ static void free_locals(int count)
 
 static void __push_operand_impl(void* value, OperandTypeCategory tp)
 {
+#if JVM_STACK_OVERFLOW_CHECK
+    if (__operand_stack.full()) {
+        unhandled_error("stack overflow!");
+    }
+#endif
+
     __operand_stack.push_back(value);
     __operand_types.push_back(tp);
 }
@@ -895,8 +909,16 @@ static Exception* invoke_method(Class* clz,
 
             alloc_locals(argc.operand_count_);
 
+#if JVM_USE_CALLSTACK
+            callstack.push_back({clz, method});
+#endif
+
             bind_arguments(self, argc, type_signature);
             ((jni::MethodStub*)method)->implementation_();
+
+#if JVM_USE_CALLSTACK
+            callstack.pop_back();
+#endif
 
             free_locals(argc.operand_count_);
 
@@ -922,8 +944,16 @@ static Exception* invoke_method(Class* clz,
 
             alloc_locals(local_count);
 
+#if JVM_USE_CALLSTACK
+            callstack.push_back({clz, method});
+#endif
+
             bind_arguments(self, argc, type_signature);
             auto exn = execute_bytecode(clz, bytecode, exception_table);
+
+#if JVM_USE_CALLSTACK
+            callstack.pop_back();
+#endif
 
             free_locals(local_count);
 
@@ -937,7 +967,7 @@ static Exception* invoke_method(Class* clz,
 
 
 
-static Class* load_class_by_name(Slice class_name)
+Class* load_class_by_name(Slice class_name)
 {
     if (auto entry = classtable::load(class_name)) {
         return entry;
@@ -1159,6 +1189,10 @@ static Object* make_string(Slice data)
 
     {
         auto array = Array::create(data.length_, 1, Array::Type::t_char);
+
+        if (array == nullptr) {
+            unhandled_error("oom");
+        }
 
         // Copy utf8 string data from classfile to char array.
         memcpy(array->data(), data.ptr_, data.length_);
@@ -1558,6 +1592,12 @@ static void invalid_bytecode_instruction(u8 instruction, int pc)
 
 
 
+#if JVM_ENABLE_DEBUGGING
+static void* breakpoints;
+#endif
+
+
+
 static Exception* execute_bytecode(Class* clz,
                                    const u8* bytecode,
                                    const ClassFile::ExceptionTable* exception_table)
@@ -1574,17 +1614,15 @@ static Exception* execute_bytecode(Class* clz,
                       buffer);                                          \
     }
 
-#ifdef JVM_ENABLE_DEBUGGING
-    u32 previous_pc = 0;
-#endif
-
     u32 pc = 0;
 
     while (true) {
         // printf("%d %x\n", pc, bytecode[pc]);
 
-#ifdef JVM_ENABLE_DEBUGGING
-
+#if JVM_ENABLE_DEBUGGING
+        if (breakpoints) {
+            // ...
+        }
 #endif
 
         switch (bytecode[pc]) {
@@ -3842,6 +3880,33 @@ static void invoke_static_block(Class* clz)
 
 
 
+static void stacktrace()
+{
+#if JVM_USE_CALLSTACK
+    unhandled_error("implement stackTrace()");
+
+    auto clz =
+        load_class_by_name(Slice::from_c_str("java/lang/StackTraceElement"));
+
+    push_operand_a(*(Object*)Array::create(callstack.size(), clz));
+
+    auto array = [] { return (Array*)load_operand(0); };
+
+    if (array() == nullptr) {
+        unhandled_error("oom");
+    }
+
+    for (auto& frame : callstack) {
+        // TODO:
+        // new StackFrame(classname, methodname, file, line);
+    }
+
+
+#endif
+}
+
+
+
 static void bootstrap()
 {
     bind_jar((const char*)lang_jar_data);
@@ -3899,11 +3964,22 @@ static void bootstrap()
                                     push_wide_operand_l(jvm::heap::total() -
                                                         jvm::heap::used());
                                 });
+
+
+#if JVM_USE_CALLSTACK
+        jni::bind_native_method(runtime_class,
+                                Slice::from_c_str("stackTrace"),
+                                Slice::from_c_str("TODO_:)"),
+                                stacktrace);
+#endif
+
     }
 
     if (import(Slice::from_c_str("java/lang/Throwable"))) {
         // ...
     }
+
+    java::jvm::jdwp::listen();
 }
 
 

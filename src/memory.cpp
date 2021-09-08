@@ -2,6 +2,7 @@
 #include "gc.hpp"
 #include "vm.hpp"
 #include <stdlib.h>
+#include "defines.hpp"
 
 
 
