@@ -101,10 +101,10 @@ public final class String implements Comparable<String>, CharSequence {
     }
 
 
-    // public static String valueOf(long l)
-    // {
-    //     return Long.toString(l);
-    // }
+    public static String valueOf(long l)
+    {
+        return Long.toString(l);
+    }
 
 
     // public static String valueOf(float f)

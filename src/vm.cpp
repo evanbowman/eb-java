@@ -1574,12 +1574,19 @@ static Exception* execute_bytecode(Class* clz,
                       buffer);                                          \
     }
 
-
+#ifdef JVM_ENABLE_DEBUGGING
+    u32 previous_pc = 0;
+#endif
 
     u32 pc = 0;
 
     while (true) {
         // printf("%d %x\n", pc, bytecode[pc]);
+
+#ifdef JVM_ENABLE_DEBUGGING
+
+#endif
+
         switch (bytecode[pc]) {
         case Bytecode::nop:
             ++pc;
@@ -1630,6 +1637,11 @@ static Exception* execute_bytecode(Class* clz,
         case Bytecode::anewarray: {
             auto len = load_operand_i(0);
             pop_operand();
+
+            if (len < 0) {
+                JVM_THROW_EXN("java/lang/NegativeArraySizeException",
+                              "cannot instantiate array with negative size");
+            }
 
             auto c = load_class(clz, ((network_u16*)&bytecode[pc + 1])->get());
 
@@ -1767,6 +1779,13 @@ static Exception* execute_bytecode(Class* clz,
         case Bytecode::newarray: {
             const int element_count = load_operand_i(0);
             pop_operand();
+
+            if (element_count < 0) {
+                JVM_THROW_EXN("java/lang/NegativeArraySizeException",
+                              "cannot instantiate array with negative size");
+            }
+
+
 
             int element_size = 4;
             switch (bytecode[pc + 1]) {

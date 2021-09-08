@@ -8,6 +8,9 @@ public class Runtime {
     private static Runtime runtime = null;
 
 
+    private Runtime() {}
+
+
     static {
         runtime = new Runtime();
     }
@@ -47,4 +50,16 @@ public class Runtime {
     {
         return totalMemory();
     }
+
+
+    public void traceInstructions(boolean on)
+    {
+    }
+
+
+    public void traceMethodCalls(boolean on)
+    {
+    }
+
+
 }

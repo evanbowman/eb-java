@@ -18,7 +18,6 @@ public class StringIndexOutOfBoundsException extends RuntimeException {
 
     StringIndexOutOfBoundsException(int index)
     {
-        // FIXME: append index
-        super("string index out of bounds");
+        super("string index" + index + " out of bounds");
     }
 }

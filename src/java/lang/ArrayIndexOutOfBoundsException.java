@@ -16,4 +16,9 @@ public class ArrayIndexOutOfBoundsException extends RuntimeException {
     }
 
 
+    ArrayIndexOutOfBoundsException(int index)
+    {
+        super("array index" + index + " out of bounds");
+    }
+
 }
