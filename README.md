@@ -23,6 +23,7 @@ Remaining work:
 
 
 Limitations:
+* I've bundled the VM with a subset of classes from java.lang that I thought would be useful. The project does not currently include even remotely all of the classes in java.base, partly because many OpenJDK classes are dependent on other JDK classes, so it's hard to write even simple java code without importing dozens of JRE classes. I've been slowly building a carefully curated subset of the JDK-8 JRE that I think would be useful for software development. Alternatively, I could just drop the whole OpenJDK-8 JRE into the project, and in fact, it would probably run ok-ish. 
 * Even when I finish implementing the InvokeDynamic instruction, it will be a while before I get around to implementing LambdaMetaFactory, StringConcatFactory, etc.
 * The VM implementation does not support single objects larger than 2047 bytes (no limitation on arrays, though, other than the heap size). You would need to put quite a lot of fields in a class to exceed the limit, though... the largest datatype, a long integer, occupies eight bytes, so 255 long integers in a single class (or 511 int variables).
 * The default heap occupies 256kb. The system can be configured with a larger heap, but currently, you should not configure the heap to anything larger than 256mb (the theoretical upper limit).
