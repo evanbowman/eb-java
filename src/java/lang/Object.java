@@ -15,4 +15,10 @@ public class Object
     protected native Object clone();
 
 
+    public String toString()
+    {
+        throw new RuntimeException("unimplemented");
+    }
+
+
 }

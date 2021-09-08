@@ -2,7 +2,7 @@ package java.lang;
 
 
 
-public final class StringBuilder {
+public final class StringBuilder implements CharSequence {
 
 
     private char[] data;
@@ -80,4 +80,47 @@ public final class StringBuilder {
 
         return new String(result);
     }
+
+
+    public String substring(int start)
+    {
+        return substring(start, count);
+    }
+
+
+    public String substring(int start, int end)
+    {
+        if (start < 0) {
+            throw new StringIndexOutOfBoundsException(start);
+        }
+        if (end > count) {
+            throw new StringIndexOutOfBoundsException(end);
+        }
+        if (start > end) {
+            throw new StringIndexOutOfBoundsException(end - start);
+        }
+        return new String(data, start, end - start);
+    }
+
+
+    public CharSequence subSequence(int start, int end)
+    {
+        return substring(start, end);
+    }
+
+
+    public char charAt(int index)
+    {
+        if ((index < 0) || (index >= data.length)) {
+            throw new StringIndexOutOfBoundsException(index);
+        }
+        return data[index];
+    }
+
+
+    public int length()
+    {
+        return count;
+    }
+
 }

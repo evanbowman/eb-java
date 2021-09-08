@@ -15,6 +15,7 @@
 #include "incbin.h"
 #include "memory.hpp"
 #include <math.h>
+// #include <iostream>
 
 
 
@@ -999,6 +1000,8 @@ static Exception* dispatch_method(Class* clz,
                                   bool special,
                                   const ClassFile::ConstantRef* ref)
 {
+    // std::cout << "call " << std::string(method_name.ptr_, method_name.length_)
+    //           << std::endl;
     auto argc = parse_arguments(method_type);
 
     Object* self = nullptr;
@@ -2292,7 +2295,8 @@ static Exception* execute_bytecode(Class* clz,
 
         case Bytecode::iushr: {
             const s32 result = (u32)load_operand_i(1)
-                               << ((u32)load_operand_i(0) & 0x1f);
+                >> ((u32)load_operand_i(0) & 0x1f);
+
             pop_operand();
             pop_operand();
             push_operand_i(result);
