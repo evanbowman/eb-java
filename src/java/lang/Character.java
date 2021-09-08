@@ -8,6 +8,12 @@ public final class Character implements Comparable<Character> {
     private char value;
 
 
+    public static Character valueOf(char c)
+    {
+        return new Character(c);
+    }
+
+
     public static char toUpperCase(char ch)
     {
         if (ch >= 'a' && ch <= 'z') {

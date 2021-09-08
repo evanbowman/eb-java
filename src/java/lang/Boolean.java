@@ -11,6 +11,12 @@ public final class Boolean implements Comparable<Boolean>
     private final boolean value;
 
 
+    public static Boolean valueOf(boolean b)
+    {
+        return new Boolean(b);
+    }
+
+
     public Boolean(boolean value)
     {
         this.value = value;

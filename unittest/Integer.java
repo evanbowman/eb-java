@@ -20,7 +20,7 @@ class Integer {
 
 
         if (!java.lang.Integer.toString(345).equals("345")) {
-            Runtime.getruntime().exit(1);
+            Runtime.getRuntime().exit(1);
         }
     }
 

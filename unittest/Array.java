@@ -58,7 +58,10 @@ class Array {
         try {
             longArray[10] = 5;
             Runtime.getRuntime().exit(1);
-        } catch (Throwable exn) {
+        } catch (ArrayIndexOutOfBoundsException exn) {
+            // ...
+        } catch (Throwable t) {
+            Runtime.getRuntime().exit(1);
         }
 
         int[] intArray = new int[100];
