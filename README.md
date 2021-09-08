@@ -23,6 +23,7 @@ Remaining work:
 
 
 Limitations:
+* Even when I finish implementing the InvokeDynamic instruction, it will be a while before I get around to implementing LambdaMetaFactory, StringConcatFactory, etc.
 * The VM implementation does not support single objects larger than 2047 bytes (no limitation on arrays, though, other than the heap size). You would need to put quite a lot of fields in a class to exceed the limit, though... the largest datatype, a long integer, occupies eight bytes, so 255 long integers in a single class (or 511 int variables).
 * The default heap occupies 256kb. The system can be configured with a larger heap, but currently, you should not configure the heap to anything larger than 256mb (the theoretical upper limit).
 * No support for jars with zip compression. None planned.
