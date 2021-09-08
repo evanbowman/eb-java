@@ -77,6 +77,12 @@ public final class String implements Comparable<String>, CharSequence {
     }
 
 
+    public static String valueOf(byte b)
+    {
+        return Byte.toString(b);
+    }
+
+
     public static String valueOf(boolean b)
     {
         return Boolean.toString(b);

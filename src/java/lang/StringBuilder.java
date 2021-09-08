@@ -50,6 +50,12 @@ public final class StringBuilder implements CharSequence {
     }
 
 
+    public StringBuilder append(Object obj)
+    {
+        return append(obj.toString());
+    }
+
+
     public StringBuilder append(String str)
     {
         char[] otherData = str.toCharArray();
@@ -66,7 +72,27 @@ public final class StringBuilder implements CharSequence {
 
     public StringBuilder append(int i)
     {
+        return append(Integer.toString(i));
+    }
+
+
+    public StringBuilder append(char c)
+    {
+        ensureCapacity(1);
+        data[count++] = c;
         return this;
+    }
+
+
+    public StringBuilder append(boolean b)
+    {
+        return append(Boolean.toString(b));
+    }
+
+
+    public StringBuilder append(long l)
+    {
+        return append(Long.toString(l));
     }
 
 

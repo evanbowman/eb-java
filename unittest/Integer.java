@@ -22,6 +22,11 @@ class Integer {
         if (!java.lang.Integer.toString(345).equals("345")) {
             Runtime.getRuntime().exit(1);
         }
+
+
+        if (java.lang.Integer.parseInt("505") != 505) {
+            Runtime.getRuntime().exit(1);
+        }
     }
 
 

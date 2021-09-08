@@ -5,7 +5,13 @@ package java.lang;
 public final class Character implements Comparable<Character> {
 
 
-    private char value;
+    private final char value;
+
+
+    public Character(char value)
+    {
+        this.value = value;
+    }
 
 
     public static Character valueOf(char c)
@@ -36,7 +42,13 @@ public final class Character implements Comparable<Character> {
 
     public int compareTo(Character other)
     {
-        return this.value - other.value;
+        return compare(this.value, other.value);
+    }
+
+
+    public static int compare(char x, char y)
+    {
+        return x - y;
     }
 
 
@@ -52,5 +64,17 @@ public final class Character implements Comparable<Character> {
         return toString(value);
     }
 
+
+    public static int digit(char ch, int radix)
+    {
+        int value = -1;
+        if (radix >= 2 && radix <= 36) {
+            // FIXME...
+            if (ch >= '0' && ch <= '9') {
+                return ch - 48;
+            }
+        }
+        return (value < radix) ? value : -1;
+    }
 
 }

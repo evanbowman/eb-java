@@ -88,6 +88,44 @@ public class IntegerStringConverter {
     }
 
 
+    public static String toString(long i, int radix)
+    {
+        if (radix < 2 || radix > 36)
+            radix = 10;
+        if (radix == 10)
+            return toString(i);
+
+        char[] buf = new char[65];
+        int charPos = 64;
+        boolean negative = (i < 0);
+
+        if (!negative) {
+            i = -i;
+        }
+
+        while (i <= -radix) {
+            buf[charPos--] = digits[(int)(-(i % radix))];
+            i = i / radix;
+        }
+        buf[charPos] = digits[(int)(-i)];
+
+        if (negative) {
+            buf[--charPos] = '-';
+        }
+
+        return new String(buf, charPos, (65 - charPos));
+    }
+
+
+    public static String toString(long i)
+    {
+        int size = (i < 0) ? stringSize(-i) + 1 : stringSize(i);
+        char[] buf = new char[size];
+        getChars(i, size, buf);
+        return new String(buf, true);
+    }
+
+
     static int stringSize(int x)
     {
         final int[] sizeTable = {
@@ -100,6 +138,19 @@ public class IntegerStringConverter {
                 return i + 1;
             }
         }
+    }
+
+
+    static int stringSize(long x)
+    {
+        long p = 10;
+        for (int i = 1; i < 19; i++) {
+            if (x < p) {
+                return i;
+            }
+            p = 10 * p;
+        }
+        return 19;
     }
 
 
@@ -135,5 +186,48 @@ public class IntegerStringConverter {
         }
     }
 
+
+    static void getChars(long i, int index, char[] buf)
+    {
+        long q;
+        int r;
+        int charPos = index;
+        char sign = 0;
+
+        if (i < 0) {
+            sign = '-';
+            i = -i;
+        }
+
+        while (i > 0x7fffffff) {
+            q = i / 100;
+            r = (int)(i - ((q << 6) + (q << 5) + (q << 2)));
+            i = q;
+            buf[--charPos] = DigitOnes[r];
+            buf[--charPos] = DigitTens[r];
+        }
+
+        int q2;
+        int i2 = (int)i;
+        while (i2 >= 65536) {
+            q2 = i2 / 100;
+            r = i2 - ((q2 << 6) + (q2 << 5) + (q2 << 2));
+            i2 = q2;
+            buf[--charPos] = DigitOnes[r];
+            buf[--charPos] = DigitTens[r];
+        }
+
+        for (;;) {
+            q2 = (i2 * 52429) >>> (16+3);
+            r = i2 - ((q2 << 3) + (q2 << 1));
+            buf[--charPos] = digits[r];
+            i2 = q2;
+            if (i2 == 0) break;
+        }
+
+        if (sign != 0) {
+            buf[--charPos] = sign;
+        }
+    }
 
 }
