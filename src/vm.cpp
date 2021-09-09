@@ -3932,7 +3932,7 @@ static void stacktrace()
     }
 
     int j = 0;
-    // NOTE: -2, we don't want to include ourself in the stacktrace
+
     for (int i = callstack.size() - (1 + skip_frames); i > -1; --i) {
 
         auto& frame = callstack[i];
