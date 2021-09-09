@@ -5,7 +5,7 @@
 
 
 
-// Java Debug Wire Protocol
+// Java Debug Wire Protocol (1.4)
 
 
 
@@ -20,9 +20,8 @@ using ObjectId = network_u64;
 
 
 struct Handshake {
-    char message_[14] = {
-        'J', 'D', 'W', 'P', '-', 'H', 'a', 'n', 'd', 's', 'h', 'a', 'k', 'e'
-    };
+    char message_[14] =
+        {'J', 'D', 'W', 'P', '-', 'H', 'a', 'n', 'd', 's', 'h', 'a', 'k', 'e'};
 };
 
 
@@ -52,7 +51,6 @@ struct ReplyPacket {
 
 
 
-
 struct IdSizesReply {
     ReplyPacket reply_;
     network_u32 field_id_size_;
@@ -69,17 +67,22 @@ struct String {
 
     const char* data()
     {
-        return ((const char*) this) + length_.get();
+        return ((const char*)this) + length_.get();
     }
 };
 
 
 
-enum {
-    ref_type_class = 1,
-    ref_type_interface,
-    ref_type_array
+struct Location {
+    u8 type_;
+    ObjectId class_id_;
+    ObjectId method_id_;
+    network_u64 index_;
 };
+
+
+
+enum { ref_type_class = 1, ref_type_interface, ref_type_array };
 
 
 enum {
@@ -87,6 +90,13 @@ enum {
     class_status_prepared = 2,
     class_status_initialized = 4,
     class_status_error = 8
+};
+
+
+
+struct ThreadNameReply {
+    ReplyPacket reply_;
+    String name_;
 };
 
 
@@ -102,6 +112,12 @@ struct EventData {
         u8 event_kind_;
     };
 
+    struct VMStartEvent {
+        Event event_;
+        network_u32 request_id_; // 0
+        ObjectId thread_id_;
+    };
+
     struct ClassPrepareEvent {
         Event event_;
         network_u32 request_id_;
@@ -112,20 +128,25 @@ struct EventData {
         char signature_begin_ = 'L';
     };
 
-    struct ClassPrepareEventFooter
-    {
+    struct ClassPrepareEventFooter {
         char signature_end_ = ';';
         network_u32 status_;
+    };
+
+    struct BreakpointEvent {
+        Event event_;
+        network_u32 request_id_;
+        ObjectId thread_id_;
+        Location loc_;
     };
 };
 
 
 
-struct Location {
-    u8 type_;
-    ObjectId class_id_;
-    ObjectId method_id_;
-    network_u64 index_;
+struct ClearRequest {
+    CommandPacket command_;
+    u8 event_kind_;
+    network_u32 request_id_;
 };
 
 
@@ -189,7 +210,6 @@ struct EventRequest {
         bool caught_;
         bool uncaught_;
     };
-
 };
 
 
@@ -219,22 +239,27 @@ struct VersionReply {
     ReplyPacket reply_;
 
     String description_str_;
-    char description_[11] = {
-        'E', 'B', 'J', 'V', 'M', '-', 'D', 'E', 'B', 'U', 'G'
-    };
+    char description_[11] =
+        {'E', 'B', 'J', 'V', 'M', '-', 'D', 'E', 'B', 'U', 'G'};
 
     network_u32 jdwp_major_;
     network_u32 jdwp_minor_;
 
     String vm_version_str_;
     char vm_version_[9] = {
-        '1', '.', '8', '.', '0', '_', '2', '1', '1',
+        '1',
+        '.',
+        '8',
+        '.',
+        '0',
+        '_',
+        '2',
+        '1',
+        '1',
     };
 
     String vm_name_str_;
-    char vm_name_[5] = {
-        'E', 'B', 'J', 'V', 'M'
-    };
+    char vm_name_[5] = {'E', 'B', 'J', 'V', 'M'};
 };
 
 
@@ -284,6 +309,13 @@ using MethodsRequest = InfoRequest;
 struct SuperclassReply {
     ReplyPacket reply_;
     ObjectId reference_type_id_; // superclass
+};
+
+
+struct AllThreadsReply {
+    ReplyPacket reply_;
+    network_u32 thread_count_;
+    ObjectId thread_id_;
 };
 
 
@@ -367,10 +399,26 @@ struct CapabilitiesReply {
 };
 
 
-void listen();
+
+void handle_request(CommandPacket* msg);
 
 
 
-}
-}
-}
+int alloc_outgoing_id();
+
+
+
+void notify_vm_start();
+
+
+
+void notify_breakpoint_hit(Class* clz,
+                           const ClassFile::MethodInfo* mtd,
+                           u32 byte_offset,
+                           u32 req);
+
+
+
+} // namespace jdwp
+} // namespace jvm
+} // namespace java

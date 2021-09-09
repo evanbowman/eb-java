@@ -2,8 +2,8 @@
 
 
 #include "classfile.hpp"
-#include "jni.hpp"
 #include "defines.hpp"
+#include "jni.hpp"
 
 
 
@@ -30,9 +30,10 @@ public:
                                     jni::MethodStub* stub) = 0;
 
 
-    virtual void visit_methods(Class *clz,
-                               void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
-                               void* arg) = 0;
+    virtual void
+    visit_methods(Class* clz,
+                  void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
+                  void* arg) = 0;
 };
 
 
@@ -52,9 +53,10 @@ public:
                             jni::MethodStub* stub) override;
 
 
-    void visit_methods(Class* clz,
-                       void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
-                       void* arg) override;
+    void
+    visit_methods(Class* clz,
+                  void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
+                  void* arg) override;
 
 
 private:

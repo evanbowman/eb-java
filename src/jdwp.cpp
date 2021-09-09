@@ -1,15 +1,10 @@
-#include "defines.hpp"
 #include "jdwp.hpp"
-#include <iostream>
-#include "object.hpp"
+#include "debuggerConnection.hpp"
 #include "classtable.hpp"
+#include "debugger.hpp"
+#include "defines.hpp"
+#include "object.hpp"
 #include "vm.hpp"
-
-
-
-#if JVM_ENABLE_DEBUGGING
-#include <SFML/Network.hpp>
-#endif
 
 
 
@@ -28,6 +23,20 @@
 
 namespace java {
 namespace jvm {
+
+
+namespace debugger {
+
+
+bool register_breakpoint(Class* clz,
+                         const ClassFile::MethodInfo* mtd,
+                         u32 byte_offset,
+                         u32 req);
+
+
+}
+
+
 namespace jdwp {
 
 
@@ -35,13 +44,9 @@ namespace jdwp {
 #if JVM_ENABLE_DEBUGGING
 
 
-
-static sf::TcpSocket* g_client;
-
-
 void send(const void* msg, size_t bytes)
 {
-    g_client->send(msg, bytes);
+    debugger::connection::send(msg, bytes);
 }
 
 
@@ -63,7 +68,13 @@ bool dot_to_slash_cpath_delimiter(Slice src, char* buffer, size_t buffer_size)
 
 
 
-static int outgoing_id = 2;
+int alloc_outgoing_id()
+{
+    static int outgoing_id = 2;
+    auto result = outgoing_id;
+    outgoing_id += 2;
+    return result;
+}
 
 
 
@@ -74,35 +85,76 @@ struct ClassPrepareEventRequest {
 
 
 
+void notify_vm_start()
+{
+    EventData data;
+    data.command_.header_.length_.set(sizeof(data) +
+                                      sizeof(EventData::VMStartEvent));
+
+    data.command_.header_.id_.set(alloc_outgoing_id());
+    data.command_.header_.flags_ = 0;
+    data.command_.header_.command_set_ = 64; // Event
+    data.command_.header_.command_ = 100;    // Composite
+    data.suspend_policy_ = 0;
+    data.event_count_.set(1);
+    send(&data, sizeof data);
+
+    EventData::VMStartEvent event;
+    event.event_.event_kind_ = 90; // VM Start
+    event.request_id_.set(0);      // Always 0 for VM Start
+    event.thread_id_.set(1);
+    send(&event, sizeof event);
+}
+
+
+
+void notify_breakpoint_hit(Class* clz,
+                           const ClassFile::MethodInfo* mtd,
+                           u32 byte_offset,
+                           u32 req)
+{
+    EventData data;
+    data.command_.header_.length_.set(sizeof(data) +
+                                      sizeof(EventData::BreakpointEvent));
+
+    data.command_.header_.id_.set(alloc_outgoing_id());
+    data.command_.header_.flags_ = 0;
+    data.command_.header_.command_set_ = 64; // Event
+    data.command_.header_.command_ = 100;    // Composite
+    data.suspend_policy_ = 1;
+    data.event_count_.set(1); // 1);
+    send(&data, sizeof data);
+
+    EventData::BreakpointEvent event;
+    event.event_.event_kind_ = 2; // breakpoint
+    event.request_id_.set(req);
+    event.thread_id_.set(1);
+    event.loc_.class_id_.set((intptr_t)clz);
+    event.loc_.method_id_.set((intptr_t)mtd);
+    event.loc_.index_.set(byte_offset);
+    event.loc_.type_ = ref_type_class;
+    send(&event, sizeof event);
+}
+
+
+
 void handle_request(CommandPacket* msg)
 {
     if (msg->header_.flags_ & 0x80) {
         auto rep = (ReplyPacket*)msg;
         // JDB sends us only odd ids. If we get an even id, it's simply a reply
         // from the debugger in response to one of our own commands.
-        std::cout << rep->header_.length_.get()
-                  << ", "
-                  << rep->header_.id_.get()
-                  << ", "
-                  << (int)rep->header_.flags_
-                  << ", "
-                  << rep->header_.error_code_.get()
-                  << std::endl;
+        std::cout << rep->header_.length_.get() << ", "
+                  << rep->header_.id_.get() << ", " << (int)rep->header_.flags_
+                  << ", " << rep->header_.error_code_.get() << std::endl;
 
         return;
     }
 
-    std::cout << msg->header_.length_.get()
-              << ", "
-              << msg->header_.id_.get()
-              << ", "
-              << (int)msg->header_.flags_
-              << ", "
-              << (int)msg->header_.command_set_
-              << ", "
-              << (int)msg->header_.command_
-              << ", "
-              << std::endl;
+    std::cout << msg->header_.length_.get() << ", " << msg->header_.id_.get()
+              << ", " << (int)msg->header_.flags_ << ", "
+              << (int)msg->header_.command_set_ << ", "
+              << (int)msg->header_.command_ << ", " << std::endl;
 
     auto set_header = [&](ReplyPacket* repl, size_t size) {
         repl->header_.length_.set(size);
@@ -135,10 +187,28 @@ void handle_request(CommandPacket* msg)
             break;
         }
 
+        case 4: { // All threads (just one, in our case)
+            AllThreadsReply repl;
+            set_header((ReplyPacket*)&repl, sizeof repl);
+            repl.thread_count_.set(1);
+            repl.thread_id_.set(1);
+            send(&repl, sizeof repl);
+            break;
+        }
+
+        case 9: { // Resume
+            ReplyPacket repl;
+            set_header((ReplyPacket*)&repl, sizeof(repl));
+            send(&repl, sizeof repl);
+            // TODO...
+            break;
+        }
+
         case 8: { // Suspend
             ReplyPacket repl;
             set_header((ReplyPacket*)&repl, sizeof(repl));
             send(&repl, sizeof repl);
+            // TODO...
             break;
         }
 
@@ -172,17 +242,20 @@ void handle_request(CommandPacket* msg)
 
             AllClassesReply repl;
 
-            size_t response_length = sizeof(repl)
-                + (sizeof(AllClassesReply::ClassInfoPreamble) * class_count)
-                + (sizeof(AllClassesReply::ClassInfoFooter) * class_count);
+            size_t response_length =
+                sizeof(repl) +
+                (sizeof(AllClassesReply::ClassInfoPreamble) * class_count) +
+                (sizeof(AllClassesReply::ClassInfoFooter) * class_count);
             // response_length now represents the size of the response, without
             // the classname strings. Scan the classtable and add in the name
             // string lengths.
 
-            classtable::visit([](Slice name, Class* clz, void* arg) {
-                auto len = (size_t*)arg;
-                *len += name.length_;
-            }, &response_length);
+            classtable::visit(
+                [](Slice name, Class* clz, void* arg) {
+                    auto len = (size_t*)arg;
+                    *len += name.length_;
+                },
+                &response_length);
 
             set_header((ReplyPacket*)&repl, response_length);
 
@@ -190,22 +263,25 @@ void handle_request(CommandPacket* msg)
 
             send(&repl, sizeof repl);
 
-            classtable::visit([](Slice name, Class* clz, void*) {
-                AllClassesReply::ClassInfoPreamble preamble;
-                preamble.ref_type_tag_ = 1; // FIXME: Identify whether a class is an
-                                            // interface.
-                preamble.reference_type_id_.set((intptr_t)clz);
-                preamble.signature_str_.length_.set(name.length_ + 2); // +2 for L and ;
-                send(&preamble, sizeof preamble);
+            classtable::visit(
+                [](Slice name, Class* clz, void*) {
+                    AllClassesReply::ClassInfoPreamble preamble;
+                    preamble.ref_type_tag_ =
+                        1; // FIXME: Identify whether a class is an
+                           // interface.
+                    preamble.reference_type_id_.set((intptr_t)clz);
+                    preamble.signature_str_.length_.set(name.length_ +
+                                                        2); // +2 for L and ;
+                    send(&preamble, sizeof preamble);
 
-                send(name.ptr_, name.length_);
+                    send(name.ptr_, name.length_);
 
-                AllClassesReply::ClassInfoFooter footer;
-                footer.status_.set(4); // class initialized;
+                    AllClassesReply::ClassInfoFooter footer;
+                    footer.status_.set(2); // class initialized;
 
-                send(&footer, sizeof footer);
-
-            }, nullptr);
+                    send(&footer, sizeof footer);
+                },
+                nullptr);
 
             break;
         }
@@ -247,28 +323,25 @@ void handle_request(CommandPacket* msg)
 
             // First: calculate the size of the data that we're going to send
             // back.
-            clz->visit_methods([](Class* clz,
-                                  const ClassFile::MethodInfo* mtd,
-                                  void* arg) {
+            clz->visit_methods(
+                [](Class* clz, const ClassFile::MethodInfo* mtd, void* arg) {
+                    auto info = (Info*)arg;
 
-                auto info = (Info*)arg;
+                    const auto method_name_str =
+                        clz->constants_->load_string(mtd->name_index_.get());
 
-                const auto method_name_str =
-                    clz->constants_->load_string(mtd->name_index_.get());
+                    const auto method_type_str = clz->constants_->load_string(
+                        mtd->descriptor_index_.get());
 
-                const auto method_type_str =
-                    clz->constants_->load_string(mtd->descriptor_index_.get());
+                    info->first += method_name_str.length_ +
+                                   method_type_str.length_ +
+                                   sizeof(MethodsReply::MethodInfo1) +
+                                   sizeof(MethodsReply::MethodInfo2) +
+                                   sizeof(MethodsReply::MethodInfo3);
 
-                info->first
-                    += method_name_str.length_
-                    + method_type_str.length_
-                    + sizeof(MethodsReply::MethodInfo1)
-                    + sizeof(MethodsReply::MethodInfo2)
-                    + sizeof(MethodsReply::MethodInfo3);
-
-                info->second++;
-
-            }, &info);
+                    info->second++;
+                },
+                &info);
 
             set_header((ReplyPacket*)&repl, info.first);
             repl.method_count_.set(info.second);
@@ -277,36 +350,32 @@ void handle_request(CommandPacket* msg)
 
 
             // Actually send the data.
-            clz->visit_methods([](Class* clz,
-                                  const ClassFile::MethodInfo* mtd,
-                                  void*) {
+            clz->visit_methods(
+                [](Class* clz, const ClassFile::MethodInfo* mtd, void*) {
+                    const auto method_name_str =
+                        clz->constants_->load_string(mtd->name_index_.get());
 
-                const auto method_name_str =
-                    clz->constants_->load_string(mtd->name_index_.get());
+                    const auto method_type_str = clz->constants_->load_string(
+                        mtd->descriptor_index_.get());
 
-                const auto method_type_str =
-                    clz->constants_->load_string(mtd->descriptor_index_.get());
+                    MethodsReply::MethodInfo1 m1;
+                    m1.reference_type_id_.set((intptr_t)mtd);
+                    m1.name_.length_.set(method_name_str.length_);
+                    send(&m1, sizeof m1);
 
-                MethodsReply::MethodInfo1 m1;
-                m1.reference_type_id_.set((intptr_t)mtd);
-                m1.name_.length_.set(method_name_str.length_);
-                send(&m1, sizeof m1);
+                    send(method_name_str.ptr_, method_name_str.length_);
 
-                send(method_name_str.ptr_, method_name_str.length_);
+                    MethodsReply::MethodInfo2 m2;
+                    m2.signature_.length_.set(method_type_str.length_);
+                    send(&m2, sizeof m2);
 
-                MethodsReply::MethodInfo2 m2;
-                m2.signature_.length_.set(method_type_str.length_);
-                send(&m2, sizeof m2);
+                    send(method_type_str.ptr_, method_type_str.length_);
 
-                send(method_type_str.ptr_, method_type_str.length_);
-
-                MethodsReply::MethodInfo3 m3;
-                m3.mod_bits_.set(mtd->access_flags_.get());
-                send(&m3, sizeof m3);
-
-            }, nullptr);
-
-
+                    MethodsReply::MethodInfo3 m3;
+                    m3.mod_bits_.set(mtd->access_flags_.get());
+                    send(&m3, sizeof m3);
+                },
+                nullptr);
 
             break;
         }
@@ -317,7 +386,8 @@ void handle_request(CommandPacket* msg)
     case 3: {
         switch (msg->header_.command_) {
         case 1: {
-            auto clz = (Class*)((SuperclassRequest*)msg)->reference_type_id_.get();
+            auto clz =
+                (Class*)((SuperclassRequest*)msg)->reference_type_id_.get();
             SuperclassReply repl;
             set_header((ReplyPacket*)&repl, sizeof repl);
             repl.reference_type_id_.set((intptr_t)clz->super_);
@@ -357,9 +427,8 @@ void handle_request(CommandPacket* msg)
                 repl.end_.set(max);
                 repl.lines_.set(linum_table->table_length_.get());
                 set_header((ReplyPacket*)&repl,
-                           sizeof(repl) +
-                           sizeof(LineTableReply::Row) *
-                           linum_table->table_length_.get());
+                           sizeof(repl) + sizeof(LineTableReply::Row) *
+                                              linum_table->table_length_.get());
                 send(&repl, sizeof repl);
 
                 for (int i = 0; i < linum_table->table_length_.get(); ++i) {
@@ -369,11 +438,6 @@ void handle_request(CommandPacket* msg)
                     out.code_index_.set(row.start_pc_.get());
                     out.line_number_.set(row.line_number_.get());
                     send(&out, sizeof out);
-
-                    std::cout << out.code_index_.get()
-                              << ", "
-                              << out.line_number_.get()
-                              << std::endl;
                 }
 
             } else {
@@ -391,6 +455,24 @@ void handle_request(CommandPacket* msg)
         break;
     }
 
+
+    case 11: {
+        switch (msg->header_.command_) {
+        case 1:
+            const char* main_thread_name = "__ebjvm_main__";
+
+            ThreadNameReply repl;
+            set_header((ReplyPacket*)&repl, sizeof repl + strlen(main_thread_name));
+            repl.name_.length_.set(strlen(main_thread_name));
+            send(&repl, sizeof repl);
+
+            send(main_thread_name, strlen(main_thread_name));
+            break;
+        }
+        break;
+    }
+
+
     case 15: {
         switch (msg->header_.command_) {
         case 2: { // clear
@@ -407,12 +489,9 @@ void handle_request(CommandPacket* msg)
         case 1: { // set
             Slice class_pattern;
             Location loc;
+            bool loc_set = false;
 
             auto req = (EventRequest*)msg;
-            std::cout << (int)req->event_kind_
-                      << ", "
-                      << req->modifier_count_.get()
-                      << std::endl;
 
             auto data = ((u8*)msg) + sizeof(EventRequest);
 
@@ -428,21 +507,16 @@ void handle_request(CommandPacket* msg)
                     auto mod = (EventRequest::ClassMatchModifier*)data;
                     data += sizeof(EventRequest::ClassMatchModifier);
                     data += mod->pattern_.length_.get();
-                    class_pattern = Slice(mod->pattern_data(),
-                                          mod->pattern_.length_.get());
-
-                    std::cout << std::string(mod->pattern_data(),
-                                             mod->pattern_.length_.get())
-                              << std::endl;
+                    class_pattern =
+                        Slice(mod->pattern_data(), mod->pattern_.length_.get());
                     break;
                 }
 
                 case 7: {
                     auto mod = (EventRequest::LocationOnlyModifier*)data;
                     data += sizeof(EventRequest::LocationOnlyModifier);
-                    //
-                    std::cout << "got location modifier " << mod->location_.index_.get()
-                              << std::endl;
+                    memcpy(&loc, &mod->location_, sizeof(loc));
+                    loc_set = true;
                     break;
                 }
 
@@ -451,8 +525,7 @@ void handle_request(CommandPacket* msg)
                     data += sizeof(EventRequest::ExceptionOnlyModifier);
                     if (auto clz = (Class*)mod->exception_or_null_.get()) {
                         printf("exception only mod for %p\n", (void*)clz);
-                        std::cout << mod->caught_ << ", "
-                                  << mod->uncaught_
+                        std::cout << mod->caught_ << ", " << mod->uncaught_
                                   << std::endl;
                         // TODO: what to do with exceptiononly modifier for
                         // event request?
@@ -461,10 +534,10 @@ void handle_request(CommandPacket* msg)
                 }
 
                 default:
-                    std::cout << "unsupported modifier type "
-                              << (int)kind
+                    std::cout << "unsupported modifier type " << (int)kind
                               << std::endl;
-                    while (1);
+                    while (1)
+                        ;
                 }
             }
 
@@ -480,33 +553,36 @@ void handle_request(CommandPacket* msg)
 
 
             switch (req->event_kind_) {
-            case 8: {
+            case 2: { // Breakpoint
+                if (loc_set) {
+                    debugger::register_breakpoint(
+                        (Class*)loc.class_id_.get(),
+                        (const ClassFile::MethodInfo*)loc.method_id_.get(),
+                        loc.index_.get(),
+                        repl.request_id_.get());
+                }
+                break;
+            }
+
+            case 8: { // Class prepare
                 if (class_pattern.length_) {
                     char buffer[80];
                     dot_to_slash_cpath_delimiter(class_pattern, buffer, 80);
-                    if (auto clz = load_class_by_name(Slice(buffer,
-                                                            class_pattern.length_))) {
+                    if (auto clz = load_class_by_name(
+                            Slice(buffer, class_pattern.length_))) {
                         EventData data;
-                        data.command_.header_.length_
-                            .set(sizeof(data) +
-                                 sizeof(EventData::ClassPrepareEvent) +
-                                 sizeof(EventData::ClassPrepareEventFooter) +
-                                 class_pattern.length_);
+                        data.command_.header_.length_.set(
+                            sizeof(data) +
+                            sizeof(EventData::ClassPrepareEvent) +
+                            sizeof(EventData::ClassPrepareEventFooter) +
+                            class_pattern.length_);
 
-                        std::cout << "len " <<
-                            data.command_.header_.length_.get()
-                                  << ", "
-                                  << sizeof(data)
-                                  << std::endl;
-
-                        data.command_.header_.id_.set(outgoing_id);
-                        outgoing_id += 2; // Is this method for generating
-                                          // outgoing ids even correct?
+                        data.command_.header_.id_.set(alloc_outgoing_id());
                         data.command_.header_.flags_ = 0;
                         data.command_.header_.command_set_ = 64; // Event
-                        data.command_.header_.command_ = 100; // Composite
+                        data.command_.header_.command_ = 100;    // Composite
                         data.suspend_policy_ = 0;
-                        data.event_count_.set(1);// 1);
+                        data.event_count_.set(1); // 1);
                         send(&data, sizeof data);
 
                         EventData::ClassPrepareEvent event;
@@ -535,7 +611,6 @@ void handle_request(CommandPacket* msg)
                 break;
             }
 
-
             break;
         }
         }
@@ -546,64 +621,10 @@ void handle_request(CommandPacket* msg)
 
 
 
-void listen()
-{
-    sf::TcpListener listener;
-
-    // bind the listener to a port
-    if (listener.listen(59012) != sf::Socket::Done) {
-        // error...
-    }
-
-    // accept a new connection
-    sf::TcpSocket client;
-    client.setBlocking(true);
-    if (listener.accept(client) != sf::Socket::Done) {
-        // error...
-    }
-
-
-    // Receive an answer from the server
-    char buffer[1024];
-    std::size_t received = 0;
-    client.receive(buffer, sizeof(buffer), received);
-
-    if (received < sizeof(Handshake)) {
-        puts("receive error!");
-    } else {
-        client.send(buffer, sizeof(Handshake));
-    }
-
-    g_client = &client;
-
-    while (true) {
-        char buffer[1024];
-        std::size_t received = 0;
-        puts("waiting...");
-        client.receive(buffer, sizeof(buffer), received);
-
-        if (received) {
-            handle_request((CommandPacket*)buffer);
-        }
-    }
-}
-
-
-
-#else
-
-
-void listen()
-{
-
-}
-
-
 #endif // JVM_ENABLE_DEBUGGING
 
 
 
-
-}
-}
-}
+} // namespace jdwp
+} // namespace jvm
+} // namespace java

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "java.hpp"
 #include "endian.hpp"
+#include "java.hpp"
 #include "slice.hpp"
 
 
@@ -212,7 +212,6 @@ struct ClassFile {
             return (const Row*)(((const u8*)this) +
                                 sizeof(LineNumberTableAttribute));
         }
-
     };
 
     struct BootstrapMethod {

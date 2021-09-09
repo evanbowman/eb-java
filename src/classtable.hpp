@@ -19,8 +19,7 @@ Class* load(Slice name);
 
 
 
-void visit(void (*visitor)(Slice, Class*, void*),
-           void* arg);
+void visit(void (*visitor)(Slice, Class*, void*), void* arg);
 
 
 

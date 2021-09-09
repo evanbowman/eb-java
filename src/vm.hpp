@@ -2,9 +2,9 @@
 
 #include "buffer.hpp"
 #include "class.hpp"
-#include "slice.hpp"
-#include "java.hpp"
 #include "defines.hpp"
+#include "java.hpp"
+#include "slice.hpp"
 
 
 

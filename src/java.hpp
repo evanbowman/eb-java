@@ -11,4 +11,4 @@ namespace java {
 [[noreturn]] void uncaught_exception(Slice exception_class_name,
                                      Slice exception_message);
 
-}
+} // namespace java

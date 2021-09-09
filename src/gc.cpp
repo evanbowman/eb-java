@@ -165,22 +165,24 @@ void mark()
         }
     }
 
-    classtable::visit([](Slice, Class* clz, void*) {
-        auto opts = clz->options_;
+    classtable::visit(
+        [](Slice, Class* clz, void*) {
+            auto opts = clz->options_;
 
-        while (opts) {
-            if (opts->type_ == Class::Option::Type::static_field) {
-                auto field = (Class::OptionStaticField*)opts;
-                if (field->is_object_) {
-                    Object* static_obj;
-                    memcpy(&static_obj, field->data(), sizeof static_obj);
-                    mark_object(static_obj);
+            while (opts) {
+                if (opts->type_ == Class::Option::Type::static_field) {
+                    auto field = (Class::OptionStaticField*)opts;
+                    if (field->is_object_) {
+                        Object* static_obj;
+                        memcpy(&static_obj, field->data(), sizeof static_obj);
+                        mark_object(static_obj);
+                    }
                 }
-            }
 
-            opts = opts->next_;
-        }
-    }, nullptr);
+                opts = opts->next_;
+            }
+        },
+        nullptr);
 }
 
 
@@ -242,23 +244,25 @@ void resolve_forwarding_pointers()
     }
 
     // Resolve addresses in static variables
-    classtable::visit([](Slice, Class* clz, void*) {
-        auto opts = clz->options_;
+    classtable::visit(
+        [](Slice, Class* clz, void*) {
+            auto opts = clz->options_;
 
-        while (opts) {
-            if (opts->type_ == Class::Option::Type::static_field) {
-                auto field = (Class::OptionStaticField*)opts;
-                if (field->is_object_) {
-                    Object* static_obj;
-                    memcpy(&static_obj, field->data(), sizeof static_obj);
-                    static_obj = resolve_forwarding_address(static_obj);
-                    memcpy(field->data(), &static_obj, sizeof static_obj);
+            while (opts) {
+                if (opts->type_ == Class::Option::Type::static_field) {
+                    auto field = (Class::OptionStaticField*)opts;
+                    if (field->is_object_) {
+                        Object* static_obj;
+                        memcpy(&static_obj, field->data(), sizeof static_obj);
+                        static_obj = resolve_forwarding_address(static_obj);
+                        memcpy(field->data(), &static_obj, sizeof static_obj);
+                    }
                 }
-            }
 
-            opts = opts->next_;
-        }
-    }, nullptr);
+                opts = opts->next_;
+            }
+        },
+        nullptr);
 
     // Now, scan the heap, and fix internal pointers to other objects...
     {

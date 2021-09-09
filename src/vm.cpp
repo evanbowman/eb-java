@@ -8,15 +8,16 @@
 #include "jni.hpp"
 #include "object.hpp"
 #include "returnAddress.hpp"
-#include <string.h>
 #include "stringBuffer.hpp"
+#include <string.h>
 #define INCBIN_PREFIX
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
+#include "debugger.hpp"
 #include "incbin.h"
+#include "jdwp.hpp"
 #include "memory.hpp"
 #include <math.h>
-#include "jdwp.hpp"
-// #include <iostream>
+// #include <cstdio>
 
 
 
@@ -800,9 +801,8 @@ static void pop_arguments(const ArgumentInfo& argc)
 
 // Move arguments from the operand stack into local variable slots in the stack
 // frame.
-static void bind_arguments(Object* self,
-                           const ArgumentInfo& argc,
-                           Slice type_signature)
+static void
+bind_arguments(Object* self, const ArgumentInfo& argc, Slice type_signature)
 {
     int local_param_index = 0;
     int stack_load_index = argc.operand_count_ - 1;
@@ -1521,9 +1521,8 @@ static Exception* invokedynamic(Class* clz, int bootstrap_method_index)
 
         if (method_info) {
 
-            auto ref =
-                (ClassFile::ConstantMethodHandle*)clz->constants_->load(
-                    method_info->bootstrap_method_ref_.get());
+            auto ref = (ClassFile::ConstantMethodHandle*)clz->constants_->load(
+                method_info->bootstrap_method_ref_.get());
 
             auto index = ref->reference_index_.get();
 
@@ -1571,58 +1570,48 @@ static inline s64 arithmetic_right_shift_64(s64 value, s64 amount)
 
 static void array_index_exn_msg(int index, char buffer[80])
 {
-    snprintf(buffer, 80, "Array index out of range %d", index);
+    // snprintf(buffer, 80, "Array index out of range %d", index);
 }
 
 
 
-[[noreturn]]
-static void invalid_bytecode_instruction(u8 instruction, int pc)
+[[noreturn]] static void invalid_bytecode_instruction(u8 instruction, int pc)
 {
     char buffer[80];
 
-    snprintf(buffer,
-             sizeof buffer,
-             "unrecognized bytecode instruction %#02x at %d\n",
-             instruction,
-             pc);
+    // snprintf(buffer,
+    //          sizeof buffer,
+    //          "unrecognized bytecode instruction %#02x at %d\n",
+    //          instruction,
+    //          pc);
 
     unhandled_error(buffer);
 }
 
 
 
-#if JVM_ENABLE_DEBUGGING
-static void* breakpoints;
-#endif
-
-
-
-static Exception* execute_bytecode(Class* clz,
-                                   const u8* bytecode,
-                                   const ClassFile::ExceptionTable* exception_table)
+static Exception*
+execute_bytecode(Class* clz,
+                 const u8* bytecode,
+                 const ClassFile::ExceptionTable* exception_table)
 {
-#define JVM_THROW_EXN(CPATH, MSG)                                       \
-    push_operand_a(*make_exception(CPATH, MSG));                        \
+#define JVM_THROW_EXN(CPATH, MSG)                                              \
+    push_operand_a(*make_exception(CPATH, MSG));                               \
     goto THROW;
 
-#define JVM_ARRAY_INDEX_EXCEPTION(INDEX)                                \
-    {                                                                   \
-        char buffer[80];                                                \
-        array_index_exn_msg((INDEX), buffer);                           \
-        JVM_THROW_EXN("java/lang/ArrayIndexOutOfBoundsException",       \
-                      buffer);                                          \
+#define JVM_ARRAY_INDEX_EXCEPTION(INDEX)                                       \
+    {                                                                          \
+        char buffer[80];                                                       \
+        array_index_exn_msg((INDEX), buffer);                                  \
+        JVM_THROW_EXN("java/lang/ArrayIndexOutOfBoundsException", buffer);     \
     }
 
     u32 pc = 0;
 
     while (true) {
-        // printf("%d %x\n", pc, bytecode[pc]);
 
 #if JVM_ENABLE_DEBUGGING
-        if (breakpoints) {
-            // ...
-        }
+        debugger::update(clz, callstack.back().second, pc);
 #endif
 
         switch (bytecode[pc]) {
@@ -1956,8 +1945,7 @@ static Exception* execute_bytecode(Class* clz,
                 push_operand_a(*obj);
                 pc += 3;
             } else {
-                JVM_THROW_EXN("java/lang/ClassCastException",
-                              "Bad cast");
+                JVM_THROW_EXN("java/lang/ClassCastException", "Bad cast");
             }
             break;
         }
@@ -2351,8 +2339,8 @@ static Exception* execute_bytecode(Class* clz,
         }
 
         case Bytecode::iushr: {
-            const s32 result = (u32)load_operand_i(1)
-                >> ((u32)load_operand_i(0) & 0x1f);
+            const s32 result =
+                (u32)load_operand_i(1) >> ((u32)load_operand_i(0) & 0x1f);
 
             pop_operand();
             pop_operand();
@@ -3858,7 +3846,8 @@ static Exception* execute_bytecode(Class* clz,
 
 
 
-INCBIN(lang_jar, PROJECT_ROOT "src/Lang.jar");
+INCBIN(lang_jar, // PROJECT_ROOT
+       "/home/evan/java/src/Lang.jar");
 
 
 
@@ -3925,7 +3914,8 @@ static void stacktrace()
     auto clz =
         load_class_by_name(Slice::from_c_str("java/lang/StackTraceElement"));
 
-    push_operand_a(*(Object*)Array::create(callstack.size() - skip_frames, clz));
+    push_operand_a(
+        *(Object*)Array::create(callstack.size() - skip_frames, clz));
 
     if (load_operand(0) == nullptr) {
         unhandled_error("oom");
@@ -3950,18 +3940,22 @@ static void stacktrace()
             }
         }
 
-        auto mtdname = frame.first->constants_->load_string(frame.second->name_index_.get());
+        auto mtdname = frame.first->constants_->load_string(
+            frame.second->name_index_.get());
 
-        push_operand_a(*(Object*)make_string(Slice(fmt_.c_str(), fmt_.length())));
+        push_operand_a(
+            *(Object*)make_string(Slice(fmt_.c_str(), fmt_.length())));
         push_operand_a(*(Object*)make_string(mtdname));
 
-        auto ctor_typeinfo = Slice::from_c_str("(Ljava/lang/String;Ljava/lang/String;)V");
-        if (auto mtd = clz->load_method(Slice::from_c_str("<init>"),
-                                        ctor_typeinfo)) {
+        auto ctor_typeinfo =
+            Slice::from_c_str("(Ljava/lang/String;Ljava/lang/String;)V");
+        if (auto mtd =
+                clz->load_method(Slice::from_c_str("<init>"), ctor_typeinfo)) {
             ArgumentInfo argc;
             argc.argument_count_ = 3;
             argc.operand_count_ = 3;
-            auto exn = invoke_method(clz, (Object*)load_operand(2), mtd, argc, ctor_typeinfo);
+            auto exn = invoke_method(
+                clz, (Object*)load_operand(2), mtd, argc, ctor_typeinfo);
             if (exn) {
                 unhandled_error("exn from StackTraceElement ctor");
             }
@@ -3973,9 +3967,7 @@ static void stacktrace()
         pop_operand();
 
         auto array = (Array*)load_operand(0);
-        memcpy(array->data() + sizeof(Object*) * (j++),
-               &elem,
-               sizeof(Object*));
+        memcpy(array->data() + sizeof(Object*) * (j++), &elem, sizeof(Object*));
     }
 
 
@@ -4053,7 +4045,6 @@ static void bootstrap()
                                 Slice::from_c_str("TODO_:)"),
                                 stacktrace);
 #endif
-
     }
 
     if (import(Slice::from_c_str("java/lang/Throwable"))) {
@@ -4086,6 +4077,9 @@ static int start(Class* entry_point)
 {
     const auto type_signature = Slice::from_c_str("([Ljava/lang/String;)V");
 
+#if JVM_ENABLE_DEBUGGING
+    debugger::init();
+#endif
 
     if (auto entry = entry_point->load_method(Slice::from_c_str("main"),
                                               type_signature)) {
@@ -4110,11 +4104,9 @@ static int start(Class* entry_point)
 
                 auto error_msg = (Array*)load_operand(0);
 
-                java::jvm::jdwp::listen();
-
-                uncaught_exception(cname,
-                                   Slice((const char*)error_msg->data(),
-                                         error_msg->size_));
+                uncaught_exception(
+                    cname,
+                    Slice((const char*)error_msg->data(), error_msg->size_));
             }
 
             return 1;

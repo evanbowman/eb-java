@@ -1,8 +1,9 @@
 #include "memory.hpp"
+#include "defines.hpp"
 #include "gc.hpp"
 #include "vm.hpp"
 #include <stdlib.h>
-#include "defines.hpp"
+#include <cstdio>
 
 
 

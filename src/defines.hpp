@@ -39,3 +39,15 @@
 #ifndef JVM_ENABLE_DEBUGGING
 #define JVM_ENABLE_DEBUGGING 0
 #endif
+
+
+#ifndef JVM_AVAILABLE_BREAKPOINTS
+#define JVM_AVAILABLE_BREAKPOINTS 4
+#endif
+
+
+#if JVM_ENABLE_DEBUGGING
+#if not JVM_USE_CALLSTACK
+#error "Debugging requires a callstack"
+#endif
+#endif

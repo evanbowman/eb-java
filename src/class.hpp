@@ -75,8 +75,9 @@ struct Class {
     Option* options_ = nullptr;
 
 
-    void visit_methods(void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
-                       void* arg);
+    void
+    visit_methods(void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
+                  void* arg);
 
 
     template <typename T> void append_option(T* option)

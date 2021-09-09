@@ -1,7 +1,7 @@
 #include "classtable.hpp"
 #include "crc32.hpp"
-#include "memory.hpp"
 #include "defines.hpp"
+#include "memory.hpp"
 
 
 

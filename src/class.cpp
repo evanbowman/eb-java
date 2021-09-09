@@ -1,8 +1,6 @@
 #include "class.hpp"
 #include "methodTable.hpp"
 #include "object.hpp"
-#include <stdio.h>
-#include <iostream>
 
 
 
@@ -45,7 +43,9 @@ const ClassFile::HeaderSection2* Class::interfaces() const
 
 
 
-void Class::visit_methods(void (*visitor)(Class*, const ClassFile::MethodInfo*, void*),
+void Class::visit_methods(void (*visitor)(Class*,
+                                          const ClassFile::MethodInfo*,
+                                          void*),
                           void* arg)
 {
     if (not(flags_ & Flag::has_method_table)) {
@@ -75,7 +75,6 @@ void Class::visit_methods(void (*visitor)(Class*, const ClassFile::MethodInfo*, 
         method_table->visit_methods(this, visitor, arg);
     }
 }
-
 
 
 
@@ -170,22 +169,21 @@ Class::get_line_number_table(const ClassFile::MethodInfo* mtd)
 
             return nullptr;
 
-        } else if (constants_->load_string(attr->attribute_name_index_.get())
-            == Slice::from_c_str("Code")) {
+        } else if (constants_->load_string(attr->attribute_name_index_.get()) ==
+                   Slice::from_c_str("Code")) {
 
-            auto code =
-                ((const u8*)attr) + sizeof(ClassFile::AttributeCode);
+            auto code = ((const u8*)attr) + sizeof(ClassFile::AttributeCode);
 
             auto exn_table =
                 (const ClassFile::ExceptionTable*)(code +
                                                    ((ClassFile::AttributeCode*)
-                                                    attr)
-                                                   ->code_length_.get());
+                                                        attr)
+                                                       ->code_length_.get());
 
             auto attr_str = (const u8*)exn_table;
             attr_str += sizeof(ClassFile::ExceptionTable);
             attr_str += sizeof(ClassFile::ExceptionTableEntry) *
-                exn_table->exception_table_length_.get();
+                        exn_table->exception_table_length_.get();
 
             int attr_count = ((network_u16*)attr_str)->get();
             attr_str += sizeof(network_u16);
@@ -193,18 +191,18 @@ Class::get_line_number_table(const ClassFile::MethodInfo* mtd)
             for (int i = 0; i < attr_count; ++i) {
                 auto attr = (ClassFile::AttributeInfo*)attr_str;
 
-                auto n = constants_->load_string(attr->attribute_name_index_.get());
+                auto n =
+                    constants_->load_string(attr->attribute_name_index_.get());
                 if (n == Slice::from_c_str("LineNumberTable")) {
                     return (const ClassFile::LineNumberTableAttribute*)attr;
                 }
 
                 attr_str += sizeof(ClassFile::AttributeInfo) +
-                    attr->attribute_length_.get();
+                            attr->attribute_length_.get();
             }
         }
 
-        str += sizeof(ClassFile::AttributeInfo) +
-            attr->attribute_length_.get();
+        str += sizeof(ClassFile::AttributeInfo) + attr->attribute_length_.get();
     }
 
     return nullptr;
