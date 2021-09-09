@@ -121,6 +121,15 @@ struct EventData {
 
 
 
+struct Location {
+    u8 type_;
+    ObjectId class_id_;
+    ObjectId method_id_;
+    network_u64 index_;
+};
+
+
+
 struct EventRequest {
     CommandPacket command_;
     u8 event_kind_;
@@ -171,7 +180,7 @@ struct EventRequest {
 
     struct LocationOnlyModifier {
         Modifier mod_;
-        ObjectId location_;
+        Location location_;
     };
 
     struct ExceptionOnlyModifier {
@@ -298,6 +307,64 @@ struct MethodsReply {
     };
 };
 
+
+struct LineTableRequest {
+    CommandPacket command_;
+    ObjectId reference_type_id_; // the class
+    ObjectId method_id_;         // the method pointer
+};
+
+
+struct LineTableReply {
+    ReplyPacket reply_;
+    network_s64 start_;
+    network_s64 end_;
+    network_s32 lines_;
+
+    struct Row {
+        network_s64 code_index_;
+        network_s32 line_number_;
+    };
+};
+
+
+struct CapabilitiesReply {
+    ReplyPacket reply_;
+
+    // NOTE: set these fields to false, until I get around to implementing these optional features.
+    bool can_watch_field_modification = false;
+    bool can_watch_field_access = false;
+    bool can_get_bytecodes = true;
+    bool can_get_synthetic_attribute = false;
+    bool can_get_owned_monitor_info = false;
+    bool can_get_current_contended_monitor = false;
+    bool can_get_monitor_info = false;
+    bool can_redefine_classes = false;
+    bool can_add_method = false;
+    bool can_unrestrictedly_redefine_classes = false;
+    bool can_pop_frames = true;
+    bool can_use_instance_filters = false;
+    bool can_get_source_debug_extension = false;
+    bool can_request_vm_death_event = false;
+    bool can_set_default_stratum = false;
+    bool can_get_instance_info = false;
+    bool can_request_monitor_events = false;
+    bool can_get_monitor_frameinfo = false;
+    bool can_use_source_name_filters = false;
+    bool can_get_constant_pool = true;
+    bool can_force_early_return = false;
+    bool reserved22 = false;
+    bool reserved23 = false;
+    bool reserved24 = false;
+    bool reserved25 = false;
+    bool reserved26 = false;
+    bool reserved27 = false;
+    bool reserved28 = false;
+    bool reserved29 = false;
+    bool reserved30 = false;
+    bool reserved31 = false;
+    bool reserved32 = false;
+};
 
 
 void listen();

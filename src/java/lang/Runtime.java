@@ -37,6 +37,9 @@ public class Runtime {
     public native StackTraceElement[] stackTrace();
 
 
+    public native void debug();
+
+
     public void halt(int code)
     {
         exit(code);

@@ -65,7 +65,8 @@ struct ClassFile {
         network_u16 max_locals_;
         network_u32 code_length_;
         // u8 bytecode[code_length_];
-        // ExceptionTable exn_;
+        // ExceptionTable exn_[...];
+        // Attributes attrs_[...];
     };
 
     struct ExceptionTableEntry {
@@ -84,6 +85,10 @@ struct ClassFile {
             return (const ExceptionTableEntry*)(((const u8*)this) +
                                                 sizeof(ExceptionTable));
         }
+    };
+
+    struct AttributeCodeAttrs {
+        network_u16 attributes_count_;
     };
 
     struct AttributeSourceFile {
@@ -191,6 +196,23 @@ struct ClassFile {
         ConstantHeader header_;
         network_u16 bootstrap_method_attr_index_;
         network_u16 name_and_type_index_;
+    };
+
+    struct LineNumberTableAttribute {
+        AttributeInfo header_;
+        network_u16 table_length_;
+
+        struct Row {
+            network_u16 start_pc_;
+            network_u16 line_number_;
+        };
+
+        const Row* data() const
+        {
+            return (const Row*)(((const u8*)this) +
+                                sizeof(LineNumberTableAttribute));
+        }
+
     };
 
     struct BootstrapMethod {

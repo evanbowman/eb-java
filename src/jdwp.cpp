@@ -17,6 +17,13 @@
 // and we're using a fairly old protocol version, because some of the older
 // commands are simpler to implement.
 
+// You may find that my code in this file is a complete mess. Not much
+// documentation about interfacing with jdb out there, so I kind of had to
+// figure things out by trial and error. That said, I actually think jdwp is a
+// really pleasant and well-documented protocol, the only issue is that I
+// sometimes have no idea about what exactly jdb wants me to send it, the
+// debugger will sometimes freeze if you don't send it exactly what it expects.
+
 
 
 namespace java {
@@ -107,6 +114,13 @@ void handle_request(CommandPacket* msg)
     switch (msg->header_.command_set_) {
     case 1: {
         switch (msg->header_.command_) {
+        case 17: { // request capabilities
+            CapabilitiesReply repl;
+            set_header((ReplyPacket*)&repl, sizeof(repl));
+            send(&repl, sizeof repl);
+            break;
+        }
+
         case 7: {
             IdSizesReply repl;
             set_header((ReplyPacket*)&repl, sizeof(repl));
@@ -314,12 +328,86 @@ void handle_request(CommandPacket* msg)
         break;
     }
 
+    case 6: {
+        switch (msg->header_.command_) {
+        case 1: { // LineTable command
+            auto req = (LineTableRequest*)msg;
+            auto clz = (Class*)req->reference_type_id_.get();
+
+            auto mtd = (const ClassFile::MethodInfo*)req->method_id_.get();
+
+            if (auto linum_table = clz->get_line_number_table(mtd)) {
+
+                s32 min = 999999999;
+                s32 max = 0;
+
+                for (int i = 0; i < linum_table->table_length_.get(); ++i) {
+                    auto& row = linum_table->data()[i];
+                    auto line = row.line_number_.get();
+                    if (line < min) {
+                        min = line;
+                    }
+                    if (line > max) {
+                        max = line;
+                    }
+                }
+
+                LineTableReply repl;
+                repl.start_.set(min);
+                repl.end_.set(max);
+                repl.lines_.set(linum_table->table_length_.get());
+                set_header((ReplyPacket*)&repl,
+                           sizeof(repl) +
+                           sizeof(LineTableReply::Row) *
+                           linum_table->table_length_.get());
+                send(&repl, sizeof repl);
+
+                for (int i = 0; i < linum_table->table_length_.get(); ++i) {
+                    auto row = linum_table->data()[i];
+
+                    LineTableReply::Row out;
+                    out.code_index_.set(row.start_pc_.get());
+                    out.line_number_.set(row.line_number_.get());
+                    send(&out, sizeof out);
+
+                    std::cout << out.code_index_.get()
+                              << ", "
+                              << out.line_number_.get()
+                              << std::endl;
+                }
+
+            } else {
+                LineTableReply repl;
+                set_header((ReplyPacket*)&repl, sizeof repl);
+                repl.start_.set(-1);
+                repl.end_.set(-1);
+                repl.lines_.set(0);
+                send(&repl, sizeof repl);
+            }
+
+            break;
+        }
+        }
+        break;
+    }
 
     case 15: {
-        Slice class_pattern;
-
         switch (msg->header_.command_) {
-        case 1: {
+        case 2: { // clear
+            // The debugger is asking us to clear an event request from the
+            // system. Eventually, we'll need to actually keep track of
+            // requests, in case we need to clear a breakpoint or something like
+            // that. For now, just do nothing and send an ack.
+            ReplyPacket repl;
+            set_header(&repl, sizeof repl);
+            send(&repl, sizeof repl);
+            break;
+        }
+
+        case 1: { // set
+            Slice class_pattern;
+            Location loc;
+
             auto req = (EventRequest*)msg;
             std::cout << (int)req->event_kind_
                       << ", "
@@ -345,6 +433,15 @@ void handle_request(CommandPacket* msg)
 
                     std::cout << std::string(mod->pattern_data(),
                                              mod->pattern_.length_.get())
+                              << std::endl;
+                    break;
+                }
+
+                case 7: {
+                    auto mod = (EventRequest::LocationOnlyModifier*)data;
+                    data += sizeof(EventRequest::LocationOnlyModifier);
+                    //
+                    std::cout << "got location modifier " << mod->location_.index_.get()
                               << std::endl;
                     break;
                 }
@@ -384,51 +481,51 @@ void handle_request(CommandPacket* msg)
 
             switch (req->event_kind_) {
             case 8: {
-                // if (class_pattern.length_) {
-                //     char buffer[80];
-                //     dot_to_slash_cpath_delimiter(class_pattern, buffer, 80);
-                //     if (auto clz = load_class_by_name(Slice(buffer,
-                //                                             class_pattern.length_))) {
-                //         EventData data;
-                //         data.command_.header_.length_
-                //             .set(sizeof(data) +
-                //                  sizeof(EventData::ClassPrepareEvent) +
-                //                  sizeof(EventData::ClassPrepareEventFooter) +
-                //                  class_pattern.length_);
+                if (class_pattern.length_) {
+                    char buffer[80];
+                    dot_to_slash_cpath_delimiter(class_pattern, buffer, 80);
+                    if (auto clz = load_class_by_name(Slice(buffer,
+                                                            class_pattern.length_))) {
+                        EventData data;
+                        data.command_.header_.length_
+                            .set(sizeof(data) +
+                                 sizeof(EventData::ClassPrepareEvent) +
+                                 sizeof(EventData::ClassPrepareEventFooter) +
+                                 class_pattern.length_);
 
-                //         std::cout << "len " <<
-                //             data.command_.header_.length_.get()
-                //                   << ", "
-                //                   << sizeof(data)
-                //                   << std::endl;
+                        std::cout << "len " <<
+                            data.command_.header_.length_.get()
+                                  << ", "
+                                  << sizeof(data)
+                                  << std::endl;
 
-                //         data.command_.header_.id_.set(outgoing_id);
-                //         outgoing_id += 2; // Is this method for generating
-                //                           // outgoing ids even correct?
-                //         data.command_.header_.flags_ = 0;
-                //         data.command_.header_.command_set_ = 64; // Event
-                //         data.command_.header_.command_ = 100; // Composite
-                //         data.suspend_policy_ = 0;
-                //         data.event_count_.set(1);// 1);
-                //         send(&data, sizeof data);
+                        data.command_.header_.id_.set(outgoing_id);
+                        outgoing_id += 2; // Is this method for generating
+                                          // outgoing ids even correct?
+                        data.command_.header_.flags_ = 0;
+                        data.command_.header_.command_set_ = 64; // Event
+                        data.command_.header_.command_ = 100; // Composite
+                        data.suspend_policy_ = 0;
+                        data.event_count_.set(1);// 1);
+                        send(&data, sizeof data);
 
-                //         EventData::ClassPrepareEvent event;
-                //         event.event_.event_kind_ = 8; // prepare
-                //         event.request_id_.set(repl.request_id_.get());
-                //         event.thread_id_.set(1); // ?
-                //         event.ref_type_tag_ = ref_type_class;
-                //         event.ref_type_id_.set((intptr_t)clz);
-                //         event.signature_.length_.set(2 + class_pattern.length_);
-                //         send(&event, sizeof event);
+                        EventData::ClassPrepareEvent event;
+                        event.event_.event_kind_ = 8; // prepare
+                        event.request_id_.set(repl.request_id_.get());
+                        event.thread_id_.set(1); // ?
+                        event.ref_type_tag_ = ref_type_class;
+                        event.ref_type_id_.set((intptr_t)clz);
+                        event.signature_.length_.set(2 + class_pattern.length_);
+                        send(&event, sizeof event);
 
-                //         send(buffer, class_pattern.length_);
+                        send(buffer, class_pattern.length_);
 
-                //         EventData::ClassPrepareEventFooter footer;
-                //         footer.status_.set(class_status_initialized);
-                //         send(&footer, sizeof footer);
-                //     }
-                // }
-                // break;
+                        EventData::ClassPrepareEventFooter footer;
+                        footer.status_.set(class_status_prepared);
+                        send(&footer, sizeof footer);
+                    }
+                }
+                break;
             }
 
             case 9: // class unload
@@ -454,7 +551,7 @@ void listen()
     sf::TcpListener listener;
 
     // bind the listener to a port
-    if (listener.listen(59003) != sf::Socket::Done) {
+    if (listener.listen(59012) != sf::Socket::Done) {
         // error...
     }
 

@@ -2,6 +2,7 @@
 #include "methodTable.hpp"
 #include "object.hpp"
 #include <stdio.h>
+#include <iostream>
 
 
 
@@ -151,6 +152,62 @@ size_t Class::instance_fields_size()
 size_t Class::instance_size()
 {
     return sizeof(Object) + instance_fields_size();
+}
+
+
+
+const ClassFile::LineNumberTableAttribute*
+Class::get_line_number_table(const ClassFile::MethodInfo* mtd)
+{
+    auto str = (const char*)mtd;
+
+    str += sizeof(ClassFile::MethodInfo);
+    for (int i = 0; i < mtd->attributes_count_.get(); ++i) {
+        auto attr = (ClassFile::AttributeInfo*)str;
+
+        if (attr->attribute_name_index_.get() == jni::magic and
+            attr->attribute_length_.get() == jni::magic) {
+
+            return nullptr;
+
+        } else if (constants_->load_string(attr->attribute_name_index_.get())
+            == Slice::from_c_str("Code")) {
+
+            auto code =
+                ((const u8*)attr) + sizeof(ClassFile::AttributeCode);
+
+            auto exn_table =
+                (const ClassFile::ExceptionTable*)(code +
+                                                   ((ClassFile::AttributeCode*)
+                                                    attr)
+                                                   ->code_length_.get());
+
+            auto attr_str = (const u8*)exn_table;
+            attr_str += sizeof(ClassFile::ExceptionTable);
+            attr_str += sizeof(ClassFile::ExceptionTableEntry) *
+                exn_table->exception_table_length_.get();
+
+            int attr_count = ((network_u16*)attr_str)->get();
+            attr_str += sizeof(network_u16);
+
+            for (int i = 0; i < attr_count; ++i) {
+                auto attr = (ClassFile::AttributeInfo*)attr_str;
+
+                auto n = constants_->load_string(attr->attribute_name_index_.get());
+                if (n == Slice::from_c_str("LineNumberTable")) {
+                    return (const ClassFile::LineNumberTableAttribute*)attr;
+                }
+
+                attr_str += sizeof(ClassFile::AttributeInfo) +
+                    attr->attribute_length_.get();
+            }
+        }
+
+        str += sizeof(ClassFile::AttributeInfo) +
+            attr->attribute_length_.get();
+    }
+
+    return nullptr;
 }
 
 

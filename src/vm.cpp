@@ -4059,8 +4059,6 @@ static void bootstrap()
     if (import(Slice::from_c_str("java/lang/Throwable"))) {
         // ...
     }
-
-    java::jvm::jdwp::listen();
 }
 
 
@@ -4111,6 +4109,8 @@ static int start(Class* entry_point)
                     (Object*)load_operand(0), "toCharArray", "()[C");
 
                 auto error_msg = (Array*)load_operand(0);
+
+                java::jvm::jdwp::listen();
 
                 uncaught_exception(cname,
                                    Slice((const char*)error_msg->data(),

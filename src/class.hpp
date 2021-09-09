@@ -161,6 +161,11 @@ struct Class {
 
         return nullptr;
     }
+
+
+    // Required for debuggers
+    const ClassFile::LineNumberTableAttribute*
+    get_line_number_table(const ClassFile::MethodInfo* mtd);
 };
 
 
