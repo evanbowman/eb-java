@@ -1,4 +1,5 @@
 #include "buffer.hpp"
+#include "slice.hpp"
 
 
 
@@ -100,6 +101,14 @@ public:
     {
         while (*str not_eq '\0') {
             push_back(*(str++));
+        }
+        return *this;
+    }
+
+    StringBuffer& operator+=(java::Slice slc)
+    {
+        for (size_t i = 0; i < slc.length_; ++i) {
+            push_back(slc.ptr_[i]);
         }
         return *this;
     }

@@ -5,7 +5,7 @@ package java.lang;
 public class Throwable {
 
 
-    public static boolean enableStackTraces = false;
+    public static boolean enableStackTraces = true;
 
 
     private String message = null;
@@ -36,12 +36,15 @@ public class Throwable {
 
     public Throwable(String message)
     {
+        this();
+
         this.message = message;
     }
 
 
     public Throwable(String message, Throwable cause)
     {
+        this();
         this.message = message;
         this.cause = cause;
     }
@@ -49,6 +52,7 @@ public class Throwable {
 
     public Throwable(Throwable cause)
     {
+        this();
         this.cause = cause;
     }
 

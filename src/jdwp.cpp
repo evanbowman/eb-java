@@ -9,7 +9,7 @@
 
 #if JVM_ENABLE_DEBUGGING
 #include <SFML/Network.hpp>
-
+#endif
 
 
 
@@ -22,6 +22,10 @@
 namespace java {
 namespace jvm {
 namespace jdwp {
+
+
+
+#if JVM_ENABLE_DEBUGGING
 
 
 
@@ -489,10 +493,6 @@ void listen()
 
 
 
-}
-}
-}
-
 #else
 
 
@@ -503,3 +503,10 @@ void listen()
 
 
 #endif // JVM_ENABLE_DEBUGGING
+
+
+
+
+}
+}
+}

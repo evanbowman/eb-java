@@ -3880,27 +3880,108 @@ static void invoke_static_block(Class* clz)
 
 
 
+static bool is_derived_from(Class* clz, Class* base)
+{
+    while (clz not_eq nullptr) {
+        if (clz == base) {
+            return true;
+        }
+        clz = clz->super_;
+    }
+    return false;
+}
+
+
+
 static void stacktrace()
 {
 #if JVM_USE_CALLSTACK
-    unhandled_error("implement stackTrace()");
+
+    auto throwable_clz =
+        load_class_by_name(Slice::from_c_str("java/lang/Throwable"));
+
+    // We want to skip frames in the callstack for any function calls at the top
+    // of the stack for methods associated with classes derived from
+    // java.lang.Throwable. Otherwise, every stack trace would include a big
+    // list of stack frames associated with constructing a derived instance of
+    // Throwable, e.g.:
+    //
+    // java.lang.Throwable.fillInStackTrace
+    // java.lang.Throwable.<init>
+    // java.lang.Throwable.<init>
+    // java.lang.Exception.<init>
+    // java.lang.RuntimeException.<init>
+    // test.Test.main
+    //
+    int skip_frames = 1; // By default, skip this call to stacktrace()
+    for (int i = callstack.size() - 2; i > -1; --i) {
+        if (is_derived_from(callstack[i].first, throwable_clz)) {
+            ++skip_frames;
+        } else {
+            break;
+        }
+    }
 
     auto clz =
         load_class_by_name(Slice::from_c_str("java/lang/StackTraceElement"));
 
-    push_operand_a(*(Object*)Array::create(callstack.size(), clz));
+    push_operand_a(*(Object*)Array::create(callstack.size() - skip_frames, clz));
 
-    auto array = [] { return (Array*)load_operand(0); };
-
-    if (array() == nullptr) {
+    if (load_operand(0) == nullptr) {
         unhandled_error("oom");
     }
 
-    for (auto& frame : callstack) {
-        // TODO:
-        // new StackFrame(classname, methodname, file, line);
+    int j = 0;
+    // NOTE: -2, we don't want to include ourself in the stacktrace
+    for (int i = callstack.size() - (1 + skip_frames); i > -1; --i) {
+
+        auto& frame = callstack[i];
+
+        push_operand_a(*(Object*)make_instance_impl(clz));
+        dup(0); // copy instance on stack
+
+        auto cname = classtable::name(frame.first);
+        StringBuffer<80> fmt_;
+        fmt_ += cname;
+
+        for (auto& c : fmt_) {
+            if (c == '/') {
+                c = '.';
+            }
+        }
+
+        auto mtdname = frame.first->constants_->load_string(frame.second->name_index_.get());
+
+        push_operand_a(*(Object*)make_string(Slice(fmt_.c_str(), fmt_.length())));
+        push_operand_a(*(Object*)make_string(mtdname));
+
+        auto ctor_typeinfo = Slice::from_c_str("(Ljava/lang/String;Ljava/lang/String;)V");
+        if (auto mtd = clz->load_method(Slice::from_c_str("<init>"),
+                                        ctor_typeinfo)) {
+            ArgumentInfo argc;
+            argc.argument_count_ = 3;
+            argc.operand_count_ = 3;
+            auto exn = invoke_method(clz, (Object*)load_operand(2), mtd, argc, ctor_typeinfo);
+            if (exn) {
+                unhandled_error("exn from StackTraceElement ctor");
+            }
+        } else {
+            unhandled_error("failed to load method!");
+        }
+
+        auto elem = load_operand(0);
+        pop_operand();
+
+        auto array = (Array*)load_operand(0);
+        memcpy(array->data() + sizeof(Object*) * (j++),
+               &elem,
+               sizeof(Object*));
     }
 
+
+#else
+
+    push_operand(nullptr);
 
 #endif
 }

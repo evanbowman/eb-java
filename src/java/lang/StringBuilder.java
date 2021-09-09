@@ -23,23 +23,19 @@ public final class StringBuilder implements CharSequence {
     }
 
 
-    private void ensureCapacity(int capacity)
+    private void ensureCapacity(int minCapacity)
     {
         if (data == null) {
-            grow(capacity);
+            grow(minCapacity);
             return;
         }
 
-        int available = data.length - count;
-
-        if (available <= capacity) {
-
-            int newSize = data.length * 2;
-            if (newSize < capacity) {
-                newSize = capacity;
+        if (minCapacity > data.length) {
+            if (minCapacity > data.length * 2) {
+                grow(minCapacity);
+            } else {
+                grow(data.length * 2);
             }
-
-            grow(newSize);
         }
     }
 
@@ -60,7 +56,7 @@ public final class StringBuilder implements CharSequence {
     {
         char[] otherData = str.toCharArray();
 
-        ensureCapacity(otherData.length);
+        ensureCapacity(count + otherData.length);
 
         for (int i = 0; i < otherData.length; ++i) {
             data[count++] = otherData[i];
@@ -78,7 +74,7 @@ public final class StringBuilder implements CharSequence {
 
     public StringBuilder append(char c)
     {
-        ensureCapacity(1);
+        ensureCapacity(count + 1);
         data[count++] = c;
         return this;
     }

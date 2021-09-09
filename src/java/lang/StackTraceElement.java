@@ -18,6 +18,14 @@ public final class StackTraceElement {
     }
 
 
+    public StackTraceElement(String declaringClass,
+                             String methodName)
+    {
+        this.declaringClass = declaringClass;
+        this.methodName = methodName;
+    }
+
+
     public String getFileName()
     {
         return null;

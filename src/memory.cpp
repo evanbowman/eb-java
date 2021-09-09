@@ -69,9 +69,10 @@ void print_stats(void (*print_str_callback)(const char*))
     const auto cm = JVM_HEAP_SIZE - (heap_end - heap_);
 
 
-    int total = width * height;
+    const int total = width * height;
     auto begin = total * (float(im) / JVM_HEAP_SIZE);
-    auto middle = total - (begin + total * (float(cm) / JVM_HEAP_SIZE));
+    auto end = total * (float(cm) / JVM_HEAP_SIZE);
+    auto middle = (total - begin) - end;
 
     char matrix[width][height];
 
