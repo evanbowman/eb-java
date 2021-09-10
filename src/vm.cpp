@@ -21,6 +21,13 @@
 
 
 
+extern "C" {
+    void test_print(const char*);
+}
+
+
+
+
 namespace java {
 namespace jvm {
 
@@ -119,15 +126,15 @@ LocalTypes& local_types()
 
 static void store_local(int index, void* value, OperandTypeCategory tp)
 {
-    __locals[(__locals.size() - 1) - index] = value;
-    __local_types[(__local_types.size() - 1) - index] = tp;
+    *(__locals.end() - (1 + index)) = value;
+    *(__local_types.end() - (1 + index)) = tp;
 }
 
 
 
 static void* load_local(int index)
 {
-    return __locals[(__locals.size() - 1) - index];
+    return *(__locals.end() - (1 + index));
 }
 
 
@@ -230,9 +237,14 @@ static void push_operand_f(float value)
 
 static void* load_operand(int offset)
 {
-    return __operand_stack[(__operand_stack.size() - 1) - offset];
+    return *(__operand_stack.end() - (1 + offset));
 }
 
+
+static void* load_top_operand()
+{
+    return __operand_stack.back();
+}
 
 
 static OperandTypeCategory operand_type_category(int offset)
@@ -760,7 +772,7 @@ Class* import(Slice classpath)
 
     auto current = jars;
     while (current) {
-        auto data = jar::load_classfile(current->jar_file_data_, classpath);
+        auto data = jar::load_classfile(current->jar_file_data_, classpath, nullptr);
         if (data.length_) {
             return import_class(classpath, data.ptr_);
         }
@@ -1230,7 +1242,7 @@ static Object* make_string(Slice data)
         unhandled_error("missing String(char[])");
     }
 
-    auto result = load_operand(0);
+    auto result = load_top_operand();
     pop_operand();
 
     return (Object*)result;
@@ -1243,7 +1255,7 @@ static Exception* make_exception(const char* classpath, const char* error)
     push_operand_a(*(Object*)make_string(Slice::from_c_str(error)));
     push_operand_a(
         *make_instance_impl(load_class_by_name(Slice::from_c_str(classpath))));
-    auto clz = ((Object*)load_operand(0))->class_;
+    auto clz = ((Object*)load_top_operand())->class_;
     dup_x1();
     swap();
 
@@ -1262,7 +1274,7 @@ static Exception* make_exception(const char* classpath, const char* error)
         unhandled_error("missing constructor");
     }
 
-    auto result = load_operand(0);
+    auto result = load_top_operand();
     pop_operand();
 
     return (Object*)result;
@@ -1699,7 +1711,7 @@ execute_bytecode(Class* clz,
             Object* result = nullptr;
 
             {
-                auto outer_array = [] { return (Array*)load_operand(0); };
+                auto outer_array = [] { return (Array*)load_top_operand(); };
 
                 if (outer_array() == nullptr) {
                     unhandled_error("oom");
@@ -1846,7 +1858,7 @@ execute_bytecode(Class* clz,
         }
 
         case Bytecode::arraylength: {
-            auto array = (Array*)load_operand(0);
+            auto array = (Array*)load_top_operand();
             pop_operand();
 
             if (array == nullptr) {
@@ -1886,7 +1898,7 @@ execute_bytecode(Class* clz,
 
         case Bytecode::aastore: {
             auto array = (Array*)load_operand(2);
-            auto value = (Object*)load_operand(0);
+            auto value = (Object*)load_top_operand();
             s32 index = load_operand_i(1);
 
             static_assert(sizeof(s32) == sizeof(float),
@@ -1917,7 +1929,7 @@ execute_bytecode(Class* clz,
 
         case Bytecode::athrow: {
         THROW:
-            auto exn = (Object*)load_operand(0);
+            auto exn = (Object*)load_top_operand();
             pop_operand();
 
             if (not handle_exception(clz, exn, pc, exception_table)) {
@@ -1927,7 +1939,7 @@ execute_bytecode(Class* clz,
         }
 
         case Bytecode::checkcast: {
-            auto obj = (Object*)load_operand(0);
+            auto obj = (Object*)load_top_operand();
 
             if (obj == nullptr) {
                 // According to the JVM specification, checkcast for null is a
@@ -1951,7 +1963,7 @@ execute_bytecode(Class* clz,
         }
 
         case Bytecode:: instanceof: {
-            auto obj = (Object*)load_operand(0);
+            auto obj = (Object*)load_top_operand();
             pop_operand();
 
             if (obj == nullptr) {
@@ -2052,7 +2064,7 @@ execute_bytecode(Class* clz,
             // read. The code currently works for most datatypes, but breaks for
             // long/double datatypes.
 
-            auto arg = (Object*)load_operand(0);
+            auto arg = (Object*)load_top_operand();
             pop_operand();
 
             if (arg == nullptr) {
@@ -2136,7 +2148,7 @@ execute_bytecode(Class* clz,
 
             } else {
                 auto obj = (Object*)load_operand(1);
-                auto value = load_operand(0);
+                auto value = load_top_operand();
 
                 pop_operand();
                 pop_operand();
@@ -2228,7 +2240,7 @@ execute_bytecode(Class* clz,
             auto index = ((network_u16*)&bytecode[pc + 1])->get();
             if (auto opt = clz->lookup_static(index)) {
                 if (opt->is_object_) {
-                    auto val = load_operand(0);
+                    auto val = load_top_operand();
                     pop_operand();
                     memcpy(opt->data(), &val, sizeof val);
                 } else {
@@ -2428,7 +2440,7 @@ execute_bytecode(Class* clz,
         }
 
         case Bytecode::if_acmpeq:
-            if (load_operand(0) == load_operand(1)) {
+            if (load_top_operand() == load_operand(1)) {
                 pc += ((network_s16*)(bytecode + pc + 1))->get();
             } else {
                 pc += 3;
@@ -2438,7 +2450,7 @@ execute_bytecode(Class* clz,
             break;
 
         case Bytecode::if_acmpne:
-            if (load_operand(0) not_eq load_operand(1)) {
+            if (load_top_operand() not_eq load_operand(1)) {
                 pc += ((network_s16*)(bytecode + pc + 1))->get();
             } else {
                 pc += 3;
@@ -2562,7 +2574,7 @@ execute_bytecode(Class* clz,
             break;
 
         case Bytecode::if_nonnull:
-            if (load_operand(0) not_eq nullptr) {
+            if (load_top_operand() not_eq nullptr) {
                 pc += ((network_s16*)(bytecode + pc + 1))->get();
             } else {
                 pc += 3;
@@ -2571,7 +2583,7 @@ execute_bytecode(Class* clz,
             break;
 
         case Bytecode::if_null:
-            if (load_operand(0) == nullptr) {
+            if (load_top_operand() == nullptr) {
                 pc += ((network_s16*)(bytecode + pc + 1))->get();
             } else {
                 pc += 3;
@@ -3154,31 +3166,31 @@ execute_bytecode(Class* clz,
 
         case Bytecode::astore:
             store_local(
-                bytecode[pc + 1], load_operand(0), OperandTypeCategory::object);
+                bytecode[pc + 1], load_top_operand(), OperandTypeCategory::object);
             pop_operand();
             pc += 2;
             break;
 
         case Bytecode::astore_0:
-            store_local(0, load_operand(0), OperandTypeCategory::object);
+            store_local(0, load_top_operand(), OperandTypeCategory::object);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::astore_1:
-            store_local(1, load_operand(0), OperandTypeCategory::object);
+            store_local(1, load_top_operand(), OperandTypeCategory::object);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::astore_2:
-            store_local(2, load_operand(0), OperandTypeCategory::object);
+            store_local(2, load_top_operand(), OperandTypeCategory::object);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::astore_3:
-            store_local(3, load_operand(0), OperandTypeCategory::object);
+            store_local(3, load_top_operand(), OperandTypeCategory::object);
             pop_operand();
             ++pc;
             break;
@@ -3186,7 +3198,7 @@ execute_bytecode(Class* clz,
         case Bytecode::fstore:
         case Bytecode::istore:
             store_local(bytecode[pc + 1],
-                        load_operand(0),
+                        load_top_operand(),
                         OperandTypeCategory::primitive);
             pop_operand();
             pc += 2;
@@ -3194,28 +3206,28 @@ execute_bytecode(Class* clz,
 
         case Bytecode::fstore_0:
         case Bytecode::istore_0:
-            store_local(0, load_operand(0), OperandTypeCategory::primitive);
+            store_local(0, load_top_operand(), OperandTypeCategory::primitive);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore_1:
         case Bytecode::istore_1:
-            store_local(1, load_operand(0), OperandTypeCategory::primitive);
+            store_local(1, load_top_operand(), OperandTypeCategory::primitive);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore_2:
         case Bytecode::istore_2:
-            store_local(2, load_operand(0), OperandTypeCategory::primitive);
+            store_local(2, load_top_operand(), OperandTypeCategory::primitive);
             pop_operand();
             ++pc;
             break;
 
         case Bytecode::fstore_3:
         case Bytecode::istore_3:
-            store_local(3, load_operand(0), OperandTypeCategory::primitive);
+            store_local(3, load_top_operand(), OperandTypeCategory::primitive);
             pop_operand();
             ++pc;
             break;
@@ -3278,7 +3290,7 @@ execute_bytecode(Class* clz,
         case Bytecode::iinc:
             store_local(bytecode[pc + 1],
                         (void*)(intptr_t)(
-                            (int)(intptr_t)(load_local(bytecode[pc + 1])) +
+                            (s32)(intptr_t)(load_local(bytecode[pc + 1])) +
                             (s8)bytecode[pc + 2]),
                         OperandTypeCategory::primitive);
             pc += 3;
@@ -3917,7 +3929,7 @@ static void stacktrace()
     push_operand_a(
         *(Object*)Array::create(callstack.size() - skip_frames, clz));
 
-    if (load_operand(0) == nullptr) {
+    if (load_top_operand() == nullptr) {
         unhandled_error("oom");
     }
 
@@ -3963,10 +3975,10 @@ static void stacktrace()
             unhandled_error("failed to load method!");
         }
 
-        auto elem = load_operand(0);
+        auto elem = load_top_operand();
         pop_operand();
 
-        auto array = (Array*)load_operand(0);
+        auto array = (Array*)load_top_operand();
         memcpy(array->data() + sizeof(Object*) * (j++), &elem, sizeof(Object*));
     }
 
@@ -4001,6 +4013,7 @@ static void bootstrap()
 
         // Needs to be deferred until we've completed the above steps.
         invoke_static_block(obj_class);
+
     } else {
         unhandled_error("failed to load object class");
     }
@@ -4098,11 +4111,11 @@ static int start(Class* entry_point)
 
             method_call_easy_noarg(exn, "getMessage", "()Ljava/lang/String;");
 
-            if (load_operand(0)) {
+            if (load_top_operand()) {
                 method_call_easy_noarg(
-                    (Object*)load_operand(0), "toCharArray", "()[C");
+                    (Object*)load_top_operand(), "toCharArray", "()[C");
 
-                auto error_msg = (Array*)load_operand(0);
+                auto error_msg = (Array*)load_top_operand();
 
                 uncaught_exception(
                     cname,

@@ -16,11 +16,11 @@ namespace jar {
 
 
 
-Slice load_file_data(const char* jar_file_bytes, Slice path);
+Slice load_file_data(const char* jar_file_bytes, Slice path, const char** error);
 
 
 
-Slice load_classfile(const char* jar_file_byts, Slice classpath);
+Slice load_classfile(const char* jar_file_byts, Slice classpath, const char** error);
 
 
 

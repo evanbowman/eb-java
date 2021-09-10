@@ -33,7 +33,7 @@ struct LocalFileHeader {
 
 
 
-Slice load_file_data(const char* jar_file_bytes, Slice path)
+Slice load_file_data(const char* jar_file_bytes, Slice path, const char** error)
 {
 
 
@@ -42,24 +42,36 @@ Slice load_file_data(const char* jar_file_bytes, Slice path)
 
         if (hdr->signature_.get() not_eq 0x04034b50) {
             // Invalid file header
+            if (error) {
+                *error = "invalid file header";
+            }
             return {nullptr, 0};
         }
 
         if (hdr->compression_method_.get() not_eq 0) {
             // We cannot support compressed files within jars. Doing so would
             // greatly limit our ability to run larger java programs.
+            if (error) {
+                *error = "JRE.gba does not support jar compression";
+            }
             return {nullptr, 0};
         }
 
         if (hdr->compressed_size_.get() not_eq hdr->uncompressed_size_.get()) {
             // We should never really reach this point, unless the file is
             // corrupt.
+            if (error) {
+                *error = "file compressed or corrupt";
+            }
             return {nullptr, 0};
         }
 
         if (hdr->gp_bit_flag_.get() & (1 << 3)) {
             // We do not support data descriptors in zip files.
             // TODO: maybe we'll support this someday?
+            if (error) {
+                *error = "unsupported data descriptor in jar file";
+            }
             return {nullptr, 0};
         }
 
@@ -82,9 +94,14 @@ Slice load_file_data(const char* jar_file_bytes, Slice path)
 
 
 
-Slice load_classfile(const char* jar_file_bytes, Slice classpath)
+Slice load_classfile(const char* jar_file_bytes, Slice classpath, const char** error)
 {
     static const int max_classpath = 256;
+
+    if (error) {
+        *error = nullptr;
+    }
+
 
     if (classpath.length_ + 6 > max_classpath) {
         return {nullptr, 0};
@@ -95,17 +112,28 @@ Slice load_classfile(const char* jar_file_bytes, Slice classpath)
     memcpy(buffer, classpath.ptr_, classpath.length_);
     memcpy(buffer + classpath.length_, ".class", 6);
 
-    auto data = load_file_data(jar_file_bytes, {buffer, classpath.length_ + 6});
+    auto data = load_file_data(jar_file_bytes, {buffer, classpath.length_ + 6}, error);
+
+    if (error && *error) {
+        return Slice{};
+    }
 
     if (data.length_ >= sizeof(ClassFile::HeaderSection1)) {
         if (((ClassFile::HeaderSection1*)data.ptr_)->magic_.get() not_eq
             0xcafebabe) {
+
+            if (error) {
+                *error = "classfile invalid magic";
+            }
 
             return Slice{};
         } else {
             return data;
         }
     } else {
+        if (error) {
+            *error = "jar header invalid";
+        }
         return Slice{};
     }
 }

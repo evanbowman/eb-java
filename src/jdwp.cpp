@@ -44,6 +44,9 @@ namespace jdwp {
 #if JVM_ENABLE_DEBUGGING
 
 
+#warning "JDWP implementation incomplete"
+
+
 void send(const void* msg, size_t bytes)
 {
     debugger::connection::send(msg, bytes);

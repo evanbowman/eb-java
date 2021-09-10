@@ -51,3 +51,12 @@
 #error "Debugging requires a callstack"
 #endif
 #endif
+
+
+#ifndef JVM_HEAP_SECTION
+#ifdef __GBA__
+#define JVM_HEAP_SECTION __attribute__((section(".ewram")))
+#else
+#define JVM_HEAP_SECTION
+#endif
+#endif

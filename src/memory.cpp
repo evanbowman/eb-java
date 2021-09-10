@@ -13,7 +13,8 @@ namespace heap {
 
 
 
-static u8 heap_[JVM_HEAP_SIZE] alignas(Object);
+JVM_HEAP_SECTION static u8 heap_[JVM_HEAP_SIZE] alignas(Object);
+
 
 
 static u8* heap_end = heap_ + JVM_HEAP_SIZE;
