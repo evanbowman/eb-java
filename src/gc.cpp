@@ -5,6 +5,8 @@
 #include "object.hpp"
 #include "returnAddress.hpp"
 #include "vm.hpp"
+#include <iostream>
+#include <chrono>
 
 
 
@@ -197,11 +199,11 @@ void assign_forwarding_pointers()
 
         const auto size = aligned_instance_size(current);
 
-        current->header_.gc_forwarding_offset_ =
-            (((u8*)current) - gap) - (u8*)heap::begin();
-
         if (not current->header_.gc_mark_bit_) {
             gap += size;
+        } else {
+            current->header_.gc_forwarding_offset_ =
+                (((u8*)current) - gap) - (u8*)heap::begin();
         }
 
         current = heap_next(current, size);
@@ -270,25 +272,27 @@ void resolve_forwarding_pointers()
         while (current) {
             const auto size = aligned_instance_size(current);
 
-            if (current->class_ == &reference_array_class) {
-                auto array = (Array*)current;
-                for (int i = 0; i < array->size_; ++i) {
-                    Object* obj;
-                    memcpy(&obj,
-                           array->data() + i * sizeof(Object*),
-                           sizeof(Object*));
-                    obj = resolve_forwarding_address(obj);
-                    memcpy(array->data() + i * sizeof(Object*),
-                           &obj,
-                           sizeof(Object*));
+            if (current->header_.gc_mark_bit_) {
+                if (current->class_ == &reference_array_class) {
+                    auto array = (Array*)current;
+                    for (int i = 0; i < array->size_; ++i) {
+                        Object* obj;
+                        memcpy(&obj,
+                               array->data() + i * sizeof(Object*),
+                               sizeof(Object*));
+                        obj = resolve_forwarding_address(obj);
+                        memcpy(array->data() + i * sizeof(Object*),
+                               &obj,
+                               sizeof(Object*));
+                    }
+                } else if (current->class_ == &return_address_class or
+                           current->class_ == &primitive_array_class) {
+                    // Nothing to do
+                } else {
+                    visit_object_fields(current, [](Object** field) {
+                        *field = resolve_forwarding_address(*field);
+                    });
                 }
-            } else if (current->class_ == &return_address_class or
-                       current->class_ == &primitive_array_class) {
-                // Nothing to do
-            } else {
-                visit_object_fields(current, [](Object** field) {
-                    *field = resolve_forwarding_address(*field);
-                });
             }
 
             current = heap_next(current, size);
@@ -346,16 +350,50 @@ u32 compact()
 
 
 
+
+auto tp1 = std::chrono::high_resolution_clock::now();
+auto tp2 = std::chrono::high_resolution_clock::now();
+void time_1()
+{
+    tp1 = std::chrono::high_resolution_clock::now();
+}
+
+
+void time_2()
+{
+    tp2 = std::chrono::high_resolution_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(tp2 - tp1).count()
+              << std::endl;
+}
+
+
+
 u32 collect()
 {
     if (heap::begin() == heap::end()) {
         return 0;
     }
 
+
+    puts("mark");
+    time_1();
     mark();
+    time_2();
+
+    puts("assign fp");
+    time_1();
     assign_forwarding_pointers();
+    time_2();
+
+    puts("resolve fp");
+    time_1();
     resolve_forwarding_pointers();
+    time_2();
+
+    puts("compact");
+    time_1();
     auto freed_bytes = compact();
+    time_2();
 
     heap::__overwrite_end(heap::end() - freed_bytes);
 

@@ -129,21 +129,7 @@ const ClassFile::MethodInfo* Class::load_method(Slice method_name,
 
 size_t Class::instance_fields_size()
 {
-    Class* current = this;
-
-    while (current) {
-        if (current->cpool_highest_field_ not_eq -1) {
-            auto sub = (SubstitutionField*)current->constants_->load(
-                current->cpool_highest_field_);
-
-            return sub->offset_ + sub->real_size();
-
-        } else {
-            current = current->super_;
-        }
-    }
-
-    return 0;
+    return fields_size_;
 }
 
 

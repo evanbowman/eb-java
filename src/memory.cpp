@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <cstdio>
 
+#include <iostream>
+#include <chrono>
+
 
 
 namespace java {
@@ -14,6 +17,11 @@ namespace heap {
 
 
 JVM_HEAP_SECTION static u8 heap_[JVM_HEAP_SIZE] alignas(Object);
+
+
+
+static_assert(JVM_HEAP_SIZE % 2 == 0,
+              "For performance reasons, the heap size should be a power of 2.");
 
 
 
@@ -149,6 +157,7 @@ Object* allocate(size_t size)
 
         if ((size_t)remaining >= size) {
             auto result = (Object*)heap_alloc;
+            result->header_.gc_forwarding_offset_ = (u8*)result - (u8*)heap_;
             heap_alloc = ((u8*)heap_alloc) + size;
             return result;
         }

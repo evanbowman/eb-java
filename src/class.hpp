@@ -49,9 +49,9 @@ struct Class {
 
     u16 flags_ = 0;
 
-    // We keep track of the highest index of SubstitutionField in our class
-    // instance. In doing so, we know how large class instances need to be.
-    s16 cpool_highest_field_ = -1;
+
+    // Size of all of the fields in this class, and inherited from superclasses.
+    u16 fields_size_ = 0;
 
 
     ConstantPool* constants_ = nullptr;

@@ -292,15 +292,11 @@ const char* parse_classfile_fields(const char* str,
                         // If we're registering a field for the same class as we're
                         // parsing...
                         if (other_clz == clz) {
-                            if (clz->cpool_highest_field_ not_eq -1) {
-                                auto prev =
-                                    (SubstitutionField*)clz->constants_->load(
-                                        clz->cpool_highest_field_);
-                                if (field.offset_ > prev->offset_) {
-                                    clz->cpool_highest_field_ = i + 1;
-                                }
-                            } else {
-                                clz->cpool_highest_field_ = i + 1;
+                            // Size of an instance with a field appended = byte
+                            // offset of the field into the instance, + sizeof field.
+                            const auto size_with_field = field.offset_ + field.real_size();
+                            if (size_with_field > clz->fields_size_) {
+                                clz->fields_size_ = size_with_field;
                             }
                         }
                     }
@@ -382,6 +378,10 @@ Class* parse_classfile(Slice classname, const char* str)
 
 
     str = parse_classfile_fields(str, clz, *h1);
+
+    if (clz->super_ and clz->fields_size_ == 0) {
+        clz->fields_size_ = clz->super_->fields_size_;
+    }
 
     auto h4 = reinterpret_cast<const ClassFile::HeaderSection4*>(str);
     str += sizeof(ClassFile::HeaderSection4);

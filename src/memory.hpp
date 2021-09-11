@@ -43,8 +43,9 @@ Object* allocate(size_t size);
 
 inline size_t aligned_size(size_t size)
 {
-    while (size % alignof(Object) not_eq 0) {
-        ++size;
+    auto diff = size % alignof(Object);
+    if (diff not_eq 0) {
+        size += alignof(Object) - diff;
     }
     return size;
 }
