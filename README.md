@@ -33,7 +33,7 @@ Limitations:
 
 ### Memory Layout
 
-The vm implementation allocates Objects, Classes, and metadata from a single contiguous heap. The system allocates objects from the beginning of the heap, and class metadata from the end of the heap. When the objects and the metadata collide, the virtual machine runs a fast compacting garbage collector, to free up space within the object region of the heap, leaving room for more instances or metadata. The vm never deallocates metadata. When the heap compactor fails to free up enough bytes for another allocation, the VM halts with an out of memory error.
+The vm implementation allocates Objects, Classes, and metadata from a single contiguous heap. The system allocates objects from the beginning of the heap, and class metadata from the end of the heap. When the objects and the metadata collide, the virtual machine runs a compacting garbage collector, to free up space within the object region of the heap, leaving room for more instances or metadata. The vm never deallocates metadata. When the heap compactor fails to free up enough bytes for another allocation, the VM halts with an out of memory error.
 ```
 Heap Chart   (*) used   (.) unused
 *************...................................................................
