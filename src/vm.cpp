@@ -3846,8 +3846,7 @@ execute_bytecode(Class* clz,
 
 
 
-INCBIN(lang_jar, // PROJECT_ROOT
-       "/home/evan/java/src/Lang.jar");
+INCBIN(lang_jar, PROJECT_ROOT "src/Lang.jar");
 
 
 
