@@ -51,4 +51,4 @@ A class may or may not also include a method cache. I plan to add a method call 
 
 ## Disclaimer
 
-I work on this every once in a while for fun. The VM implementation runs java programs fairly accurately, but a purely interpreted, limited memory JVM will never be very fast. I originally designed this code to run on a gameboy, but later determined that it's not really fast enough for realtime programs, and probably never will be, without throwing memory at it, which you can't do in an embedded cpu. Still, I enjoy working on this from time to time.
+I work on this every once in a while for fun. The VM implementation runs java programs fairly accurately, but a purely interpreted, limited memory JVM will never be very fast. Also, I haven't implemented very many standard JRE classes, so you cannot do much with this JVM right now. I originally designed this code to run on a gameboy, but later determined that it's not really fast enough for realtime applications, and probably never will be, without throwing memory at it, which you can't do in an embedded cpu. Still, I enjoy working on this from time to time.
